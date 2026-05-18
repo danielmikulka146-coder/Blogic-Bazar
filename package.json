@@ -1,0 +1,56 @@
+{
+  "name": "blum-next-app-template",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Next.js App Router template used by Blogic University.",
+  "homepage": "https://github.com/Marsiso/blum-next-app-template#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Marsiso/blum-next-app-template.git"
+  },
+  "license": "MIT",
+  "author": "Marek Olšák",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "prepare": "husky",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "biome check",
+    "format": "biome format --write",
+    "ts": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@mantine/core": "^9.1.1",
+    "@mantine/form": "^9.1.1",
+    "@mantine/hooks": "^9.1.1",
+    "@mantine/modals": "^9.1.1",
+    "@tanstack/react-query": "^5.100.9",
+    "better-sqlite3": "^12.9.0",
+    "drizzle-orm": "^0.45.2",
+    "lucide-react": "^1.14.0",
+    "next": "^16.2.5",
+    "next-intl": "^4.11.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@tailwindcss/postcss": "^4.2.4",
+    "@tanstack/react-query-devtools": "^5.100.9",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "drizzle-kit": "^0.31.10",
+    "husky": "^9.1.7",
+    "tailwindcss": "^4.2.4",
+    "typescript": "^6.0.3"
+  }
+}
