@@ -1,5 +1,4 @@
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from "@mantine/core";
-import { ModalsProvider } from "@mantine/modals";
 import { notFound } from "next/navigation";
 import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { Providers } from "@/components/infrastructure/Providers";
@@ -21,11 +20,9 @@ export default async function LocaleLayout({ children, params }: LayoutProps<"/[
       <body>
         <NextIntlClientProvider>
           <MantineProvider>
-            <ModalsProvider>
-              <Providers>
-                <PageLayout>{children}</PageLayout>
-              </Providers>
-            </ModalsProvider>
+            <Providers>
+              <PageLayout>{children}</PageLayout>
+            </Providers>
           </MantineProvider>
         </NextIntlClientProvider>
       </body>

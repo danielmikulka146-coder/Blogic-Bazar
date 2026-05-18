@@ -1,8 +1,7 @@
-import { Title } from "@mantine/core";
-import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { HeaderSearch } from "@/components/layout/Header";
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata() {
   const t = await getTranslations();
 
   return {
@@ -12,7 +11,5 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function Page(_: PageProps<"/[locale]">) {
-  const t = await getTranslations();
-
-  return <Title>{t("page.home.title")}</Title>;
+  return <HeaderSearch />;
 }
