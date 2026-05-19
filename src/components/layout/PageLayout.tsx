@@ -5,7 +5,6 @@ import type { PropsWithChildren } from "react";
 import { HeaderSearch } from "@/components/layout/Header";
 import { PageLogo } from "@/components/layout/PageLogo";
 
-const HEADER_HEIGHT = 90;
 const BODY_MAX_WIDTH = 1280;
 
 export function PageLayout({ children }: PropsWithChildren) {

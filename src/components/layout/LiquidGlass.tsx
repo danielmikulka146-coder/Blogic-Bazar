@@ -216,14 +216,14 @@ export function LiquidGlass({
   radius = "pill",
   glassThickness = 80,
   bezelWidth = 60,
-  refractiveIndex = 3.0,
-  scaleRatio = 1.0,
-  blur = 0.5,
-  specularSaturation = 2,
-  specularOpacity = 0.5,
+  refractiveIndex = 1.5,
+  scaleRatio = 0.7,
+  blur = 1.0,
+  specularSaturation = 4,
+  specularOpacity = 0.2,
   surface = "convex_squircle",
   tintColor = "123, 123, 123",
-  tintOpacity = 0.06,
+  tintOpacity = 0.08,
   innerShadowColor = "#ffffff",
   innerShadowBlur = 20,
   innerShadowSpread = -5,
@@ -376,7 +376,7 @@ export function LiquidGlass({
         height="0"
         style={{ position: "absolute", overflow: "hidden" }}
         // sRGB barevný prostor – nutné pro správný displacement
-        color-interpolation-filters="sRGB"
+        colorInterpolationFilters="sRGB"
         aria-hidden="true"
       >
         <defs ref={defsRef} />

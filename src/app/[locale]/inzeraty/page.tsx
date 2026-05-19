@@ -1,6 +1,7 @@
-import { Card, SimpleGrid, Title } from "@mantine/core";
+import { SimpleGrid } from "@mantine/core";
 import { db } from "@/db";
 import { inzeraty } from "@/db/schemas";
+import { InzeratCard } from "./InzeratCard";
 
 export default async function Page() {
   const data = await db.select().from(inzeraty).all();
@@ -9,12 +10,15 @@ export default async function Page() {
     <div>
       <SimpleGrid cols={3} spacing="md">
         {data.map((inzerat) => (
-          <Card key={inzerat.id} shadow="md" padding="md" radius="lg" bg="#2A2A2A">
-            <Title order={3} c="white">
-              {inzerat.nazev}
-            </Title>
-            <p style={{ color: "white" }}>{inzerat.free ? "Zdarma" : `${inzerat.cena.toLocaleString("cs-CZ")} Kč`}</p>
-          </Card>
+          <InzeratCard
+            key={inzerat.id}
+            nazev={inzerat.nazev}
+            foto={inzerat.foto}
+            kategorie={inzerat.kategorie}
+            stav={inzerat.stav}
+            cena={inzerat.cena}
+            free={inzerat.free}
+          />
         ))}
       </SimpleGrid>
     </div>

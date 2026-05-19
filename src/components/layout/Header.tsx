@@ -64,16 +64,16 @@ export function HeaderSearch() {
          */}
         <LiquidGlass
           radius="pill"
-          glassThickness={42}
-          bezelWidth={18}
+          glassThickness={80}
+          bezelWidth={60}
           refractiveIndex={1.5}
-          scaleRatio={1.0}
-          blur={1.5}
+          scaleRatio={0.7}
+          blur={1.0}
           specularSaturation={4}
           specularOpacity={0.5}
-          tintColor="123, 123, 123"
-          tintOpacity={0.08}
-          innerShadowBlur={14}
+          tintColor="0, 0, 0"
+          tintOpacity={0.06}
+          innerShadowBlur={10}
           innerShadowSpread={-4}
           outerShadowBlur={28}
           fallbackBlur={18}
