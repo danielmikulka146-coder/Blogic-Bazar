@@ -13,6 +13,16 @@ interface Props {
   children: ReactNode;
 }
 
-export default function RootLayout({ children }: Props) {
-  return children;
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="cs">
+      <body
+        style={{
+          backgroundColor: "#11181C",
+        }}
+      >
+        {children}
+      </body>
+    </html>
+  );
 }
