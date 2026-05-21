@@ -1,8 +1,9 @@
 "use client";
 
-import { Badge, Grid, Group, Stack, Text, Title } from "@mantine/core";
+import { Badge, Grid, Group, Modal, Stack, Text, Title } from "@mantine/core";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import QRCode from "react-qr-code";
 import { useFilterState } from "@/components/infrastructure/FilterStateProvider";
 import { LiquidGlass } from "@/components/layout/LiquidGlass";
 import { rezervujInzerat } from "./actions";
@@ -17,7 +18,17 @@ type InzeratData = {
   stav: string;
   cena: number | null;
   free: boolean;
+  qrPlatba: boolean;
 };
+
+const QR_ACCOUNT = "CZ6508000000192000145399";
+const QR_VS = "00000";
+
+function buildSpdString(cena: number, id: number) {
+  const am = cena.toFixed(2);
+  const msg = `Platba za inzerat ${id}`;
+  return `SPD*1.0*ACC:${QR_ACCOUNT}*AM:${am}*CC:CZK*MSG:${msg}*X-VS:${QR_VS}`;
+}
 
 function stavColor(stav: string) {
   if (stav === "dostupné") return "green";
@@ -61,6 +72,45 @@ function RezervujButton({ onClick, pending }: { onClick: () => void; pending: bo
       >
         <Text fw={600} c="var(--mantine-color-text)" size="sm" style={{ whiteSpace: "nowrap" }}>
           {pending ? "Rezervuji…" : "Zarezervovat"}
+        </Text>
+      </LiquidGlass>
+    </button>
+  );
+}
+
+function ZobrazitQrButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        border: "none",
+        background: "transparent",
+        cursor: "pointer",
+        padding: 0,
+        display: "block",
+        width: "100%",
+      }}
+    >
+      <LiquidGlass
+        radius={12}
+        glassThickness={60}
+        bezelWidth={20}
+        refractiveIndex={1.5}
+        scaleRatio={0.7}
+        blur={1.0}
+        specularSaturation={4}
+        specularOpacity={0.7}
+        tintColor="100, 180, 255"
+        tintOpacity={0.18}
+        innerShadowBlur={10}
+        innerShadowSpread={-3}
+        outerShadowBlur={20}
+        fallbackBlur={16}
+        style={{ padding: "12px 0", textAlign: "center" }}
+      >
+        <Text fw={600} c="var(--mantine-color-text)" size="sm" style={{ whiteSpace: "nowrap" }}>
+          Zobrazit QR platbu
         </Text>
       </LiquidGlass>
     </button>
@@ -180,9 +230,12 @@ function HeaderRightSlot({
 export function InzeratDetailClient({ inzerat, fotky }: { inzerat: InzeratData; fotky: string[] }) {
   const [stav, setStav] = useState(inzerat.stav);
   const [pending, setPending] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const { setHeaderSlotRight } = useFilterState();
   const actionRef = useRef<HTMLDivElement>(null);
   const [actionVisible, setActionVisible] = useState(true);
+
+  const canShowQr = inzerat.qrPlatba && !inzerat.free && inzerat.cena != null && inzerat.cena > 0;
 
   const cenaText = inzerat.free ? "Zdarma" : `${inzerat.cena?.toLocaleString("cs-CZ")} Kč`;
 
@@ -256,6 +309,8 @@ export function InzeratDetailClient({ inzerat, fotky }: { inzerat: InzeratData; 
 
               {stav === "dostupné" && <RezervujButton onClick={handleRezervovat} pending={pending} />}
 
+              {canShowQr && <ZobrazitQrButton onClick={() => setQrOpen(true)} />}
+
               <Stack gap={4}>
                 <Text c="dimmed" size="xs" tt="uppercase" fw={600}>
                   Kontakt
@@ -278,6 +333,41 @@ export function InzeratDetailClient({ inzerat, fotky }: { inzerat: InzeratData; 
           {inzerat.popis}
         </Text>
       </Stack>
+
+      {canShowQr && (
+        <Modal
+          opened={qrOpen}
+          onClose={() => setQrOpen(false)}
+          centered
+          withCloseButton={false}
+          padding={0}
+          size="auto"
+          radius="lg"
+          overlayProps={{ backgroundOpacity: 0.55, blur: 8 }}
+          styles={{ content: { background: "transparent", boxShadow: "none" } }}
+        >
+          <Stack gap="md" align="center" p="lg">
+            <div
+              style={{
+                background: "white",
+                padding: 24,
+                borderRadius: 20,
+                boxShadow: "0 20px 60px rgba(0, 0, 0, 0.4)",
+              }}
+            >
+              <QRCode value={buildSpdString(inzerat.cena as number, inzerat.id)} size={320} />
+            </div>
+            <Stack gap={2} align="center">
+              <Text c="white" size="sm" fw={600}>
+                {cenaText} · Naskenujte v bankovní aplikaci
+              </Text>
+              <Text c="rgba(255,255,255,0.7)" size="xs">
+                Účet: {QR_ACCOUNT} · VS: {QR_VS}
+              </Text>
+            </Stack>
+          </Stack>
+        </Modal>
+      )}
     </Stack>
   );
 }

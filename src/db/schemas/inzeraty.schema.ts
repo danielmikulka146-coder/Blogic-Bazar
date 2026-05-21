@@ -10,4 +10,6 @@ export const inzeraty = sqliteTable("inzeraty", {
   foto: text().notNull(),
   cena: integer().notNull(),
   free: integer({ mode: "boolean" }).notNull(),
+  qrPlatba: integer({ mode: "boolean" }).notNull().default(false),
+  telefon: text(),
 });

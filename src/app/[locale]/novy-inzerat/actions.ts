@@ -12,16 +12,18 @@ export async function vytvorInzerat(formData: FormData) {
   const popis = formData.get("popis") as string;
   const kategorie = formData.get("kategorie") as string;
   const kontakt = formData.get("kontakt") as string;
+  const telefon = (formData.get("telefon") as string) || null;
   const stav = formData.get("stav") as string;
   const cena = Number(formData.get("cena"));
   const free = formData.get("free") === "true";
+  const qrPlatba = formData.get("qrPlatba") === "true";
   const files = formData.getAll("foto") as File[];
   const remoteFotoPaths = formData.getAll("remoteFoto") as string[];
   const uploadSessionKey = formData.get("uploadSessionKey") as string | null;
 
   const [{ id }] = await db
     .insert(inzeraty)
-    .values({ nazev, popis, kategorie, kontakt, stav, cena, free, foto: "[]" })
+    .values({ nazev, popis, kategorie, kontakt, telefon, stav, cena, free, qrPlatba, foto: "[]" })
     .returning({ id: inzeraty.id });
 
   const platneFiles = files.filter((f) => f.size > 0);
