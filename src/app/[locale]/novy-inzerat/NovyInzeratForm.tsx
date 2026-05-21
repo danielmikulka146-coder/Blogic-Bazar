@@ -7,8 +7,12 @@ import {
   ActionIcon,
   Badge,
   Box,
+  Button,
   Checkbox,
+  CopyButton,
   Group,
+  Loader,
+  Modal,
   NumberInput,
   Paper,
   ScrollArea,
@@ -20,8 +24,10 @@ import {
 } from "@mantine/core";
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
 import { useForm } from "@mantine/form";
-import { ImageIcon, Upload, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Check, Copy, ImageIcon, Smartphone, Upload, X } from "lucide-react";
+import { useLocale } from "next-intl";
+import QRCode from "qrcode";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LiquidGlass } from "@/components/layout/LiquidGlass";
 import { GlassSelect } from "@/components/ui/GlassSelect";
 import { useRouter } from "@/i18n/navigation";
@@ -30,7 +36,12 @@ import { vytvorInzerat } from "./actions";
 const KATEGORIE = ["Elektronika", "Oblečení", "Nábytek", "Sport", "Knihy", "Auto-moto", "Jiné"];
 const STAVY = ["dostupné", "rezervováno", "prodáno"];
 
-type FotoItem = { id: string; file: File; url: string };
+type FotoItem = {
+  id: string;
+  url: string;
+  file?: File;
+  remotePath?: string;
+};
 
 function SortableThumbnail({ item, onRemove, isFirst }: { item: FotoItem; onRemove: () => void; isFirst: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -86,9 +97,16 @@ function SortableThumbnail({ item, onRemove, isFirst }: { item: FotoItem; onRemo
 
 export default function NovyInzeratForm() {
   const router = useRouter();
+  const locale = useLocale();
   const [fotky, setFotky] = useState<FotoItem[]>([]);
   const fotkyRef = useRef(fotky);
   fotkyRef.current = fotky;
+
+  const [phoneModalOpen, setPhoneModalOpen] = useState(false);
+  const [uploadSessionKey, setUploadSessionKey] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [uploadUrl, setUploadUrl] = useState<string | null>(null);
+  const seenRemoteRef = useRef<Set<string>>(new Set());
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -96,10 +114,61 @@ export default function NovyInzeratForm() {
   useEffect(() => {
     return () => {
       for (const f of fotkyRef.current) {
-        URL.revokeObjectURL(f.url);
+        if (f.file) URL.revokeObjectURL(f.url);
       }
     };
   }, []);
+
+  const openPhoneUpload = useCallback(async () => {
+    setPhoneModalOpen(true);
+    if (uploadSessionKey) return;
+    try {
+      const res = await fetch("/api/upload-session", { method: "POST" });
+      const data = (await res.json()) as { key: string };
+      const url = `${window.location.origin}/${locale}/nahravani-obrazku?key=${data.key}`;
+      const qr = await QRCode.toDataURL(url, { width: 320, margin: 1 });
+      setUploadSessionKey(data.key);
+      setUploadUrl(url);
+      setQrDataUrl(qr);
+    } catch {
+      setPhoneModalOpen(false);
+    }
+  }, [uploadSessionKey, locale]);
+
+  // Polling — když je modal otevřený nebo session existuje, pravidelně se ptá serveru
+  useEffect(() => {
+    if (!uploadSessionKey) return;
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/upload-session/${uploadSessionKey}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { fotky: { webPath: string; filename: string }[] };
+        const novinky = data.fotky.filter((f) => !seenRemoteRef.current.has(f.webPath));
+        if (novinky.length > 0) {
+          for (const n of novinky) seenRemoteRef.current.add(n.webPath);
+          setFotky((prev) => [
+            ...prev,
+            ...novinky.map((n) => ({
+              id: `remote-${n.filename}`,
+              url: n.webPath,
+              remotePath: n.webPath,
+            })),
+          ]);
+        }
+      } catch {
+        /* ignoruj přechodné chyby */
+      }
+    };
+    const interval = setInterval(() => {
+      if (!stopped) tick();
+    }, 2000);
+    tick();
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+    };
+  }, [uploadSessionKey]);
 
   const form = useForm({
     initialValues: {
@@ -154,7 +223,15 @@ export default function NovyInzeratForm() {
   function odeberFotku(id: string) {
     setFotky((prev) => {
       const target = prev.find((f) => f.id === id);
-      if (target) URL.revokeObjectURL(target.url);
+      if (target?.file) URL.revokeObjectURL(target.url);
+      if (target?.remotePath && uploadSessionKey) {
+        // Necháváme path v seenRemoteRef, aby se polling fotku znovu nevrátil.
+        // Server se uklidí, aby ji telefon viděl jako smazanou.
+        const filename = target.remotePath.split("/").pop();
+        if (filename) {
+          fetch(`/api/upload-session/${uploadSessionKey}/foto/${filename}`, { method: "DELETE" }).catch(() => {});
+        }
+      }
       return prev.filter((f) => f.id !== id);
     });
   }
@@ -175,7 +252,14 @@ export default function NovyInzeratForm() {
       formData.append(key, String(val));
     }
     for (const item of fotky) {
-      formData.append("foto", item.file);
+      if (item.file) {
+        formData.append("foto", item.file);
+      } else if (item.remotePath) {
+        formData.append("remoteFoto", item.remotePath);
+      }
+    }
+    if (uploadSessionKey) {
+      formData.append("uploadSessionKey", uploadSessionKey);
     }
     await vytvorInzerat(formData);
     router.push("/inzeraty");
@@ -194,11 +278,16 @@ export default function NovyInzeratForm() {
             <Stack gap="sm">
               <Group justify="space-between" align="center">
                 <Text fw={500}>Fotky</Text>
-                {fotky.length > 0 && (
-                  <Text size="xs" c="dimmed">
-                    Přetažením změníte pořadí · první fotka je hlavní
-                  </Text>
-                )}
+                <Group gap="xs">
+                  {fotky.length > 0 && (
+                    <Text size="xs" c="dimmed" visibleFrom="sm">
+                      Přetažením změníte pořadí · první fotka je hlavní
+                    </Text>
+                  )}
+                  <Button size="xs" variant="light" leftSection={<Smartphone size={14} />} onClick={openPhoneUpload}>
+                    Nahrát z telefonu
+                  </Button>
+                </Group>
               </Group>
 
               <Dropzone
@@ -351,6 +440,67 @@ export default function NovyInzeratForm() {
           </Group>
         </Box>
       </form>
+
+      <Modal
+        opened={phoneModalOpen}
+        onClose={() => setPhoneModalOpen(false)}
+        title="Nahrát z telefonu"
+        centered
+        size="sm"
+      >
+        <Stack gap="md" align="center">
+          <Text size="sm" c="dimmed" ta="center">
+            Naskenuj QR kód telefonem. Otevře se stránka, kde můžeš vyfotit nebo vybrat fotky — objeví se zde
+            automaticky.
+          </Text>
+
+          {qrDataUrl ? (
+            <Box
+              style={{
+                background: "white",
+                padding: 12,
+                borderRadius: 12,
+                lineHeight: 0,
+              }}
+            >
+              {/** biome-ignore lint/performance/noImgElement: data: URL pro QR; next/image to nepodporuje */}
+              <img src={qrDataUrl} alt="QR kód pro nahrávání" width={256} height={256} />
+            </Box>
+          ) : (
+            <Group gap="xs">
+              <Loader size="sm" />
+              <Text size="sm">Generuji QR kód…</Text>
+            </Group>
+          )}
+
+          {uploadUrl && (
+            <Stack gap={4} w="100%">
+              <Text size="xs" c="dimmed">
+                Nebo otevři odkaz ručně:
+              </Text>
+              <Group gap="xs" wrap="nowrap">
+                <TextInput value={uploadUrl} readOnly style={{ flex: 1 }} size="xs" />
+                <CopyButton value={uploadUrl}>
+                  {({ copied, copy }) => (
+                    <ActionIcon
+                      variant="light"
+                      color={copied ? "green" : "blue"}
+                      onClick={copy}
+                      aria-label="Zkopírovat odkaz"
+                    >
+                      {copied ? <Check size={14} /> : <Copy size={14} />}
+                    </ActionIcon>
+                  )}
+                </CopyButton>
+              </Group>
+            </Stack>
+          )}
+
+          <Text size="xs" c="dimmed" ta="center">
+            Telefon a počítač musí být na stejné WiFi.
+          </Text>
+        </Stack>
+      </Modal>
     </Box>
   );
 }
