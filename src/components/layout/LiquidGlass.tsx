@@ -13,7 +13,11 @@
  * V Safari/Firefox `backdrop-filter: url()` není podporovaný — viz `fallbackBlur`.
  */
 
-import { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { useMantineColorScheme } from "@mantine/core";
+import { type CSSProperties, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+
+// useLayoutEffect na klientu, useEffect na serveru (potlačí SSR warning)
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 /* ---------- Surface functions (z originálu) ---------- */
 
@@ -169,6 +173,102 @@ function generateSpecularMap(w: number, h: number, radius: number, bezelWidth: n
   return c.toDataURL();
 }
 
+/* ---------- Cache ---------- */
+
+// LiquidGlass instance často sdílí parametry (header pill, slot, filter chips)
+// a stejné instance remountují (slot appear/disappear). Generování map stojí
+// ~70k iterací kanvas matiky + toDataURL base64 + následně browser musí
+// re-parsovat SVG filter a dekódovat data URL. Memoizace na úrovni modulu
+// = první vygenerování zaplatí, další mounty pro stejné parametry už jen
+// sahají do mapy a podávají hotovou URL → během mount-time animace žádný
+// hlavní-thread spike.
+type CachedMaps = { dispUrl: string; specUrl: string; maxDisp: number };
+const mapCache = new Map<string, CachedMaps>();
+
+/**
+ * Pre-warmuje LiquidGlass mapy pro známé konfigurace mimo render cyklus.
+ * Generování probíhá v idle callbacku (jeden config za slot), takže nikdy
+ * neblokuje main thread déle než ~10ms. Po prewarmu mají všechny matching
+ * LiquidGlass instance při mountu cache hit na map cache I na decoded set
+ * → filtr se aplikuje synchronně bez "snap into existence".
+ *
+ * Volej z root klient komponenty (např. Providers) s configs odpovídajícími
+ * komponentám, které nejsou ihned vidět (dropdown panely, filter chips,
+ * compact filter bar v header slotu, ...).
+ */
+export type LiquidGlassPrewarmConfig = {
+  width: number;
+  height: number;
+  radius?: number | "pill";
+  glassThickness?: number;
+  bezelWidth?: number;
+  refractiveIndex?: number;
+  surface?: SurfaceKey;
+};
+
+type IdleCallbackWindow = Window & {
+  requestIdleCallback?: (cb: (deadline: { timeRemaining(): number }) => void, opts?: { timeout: number }) => number;
+};
+
+function scheduleIdle(fn: () => void): void {
+  const w = window as IdleCallbackWindow;
+  if (typeof w.requestIdleCallback === "function") {
+    w.requestIdleCallback(fn, { timeout: 3000 });
+  } else {
+    setTimeout(fn, 0);
+  }
+}
+
+export function prewarmLiquidGlass(configs: readonly LiquidGlassPrewarmConfig[]): void {
+  if (typeof window === "undefined") return;
+
+  for (const c of configs) {
+    scheduleIdle(() => {
+      const w = c.width;
+      const h = c.height;
+      const cornerRadius = c.radius === "pill" || c.radius === undefined ? Math.round(h / 2) : c.radius;
+      const clampedBezel = Math.min(c.bezelWidth ?? 60, cornerRadius - 1, Math.min(w, h) / 2 - 1);
+      getOrBuildMaps(
+        w,
+        h,
+        cornerRadius,
+        clampedBezel,
+        c.glassThickness ?? 80,
+        c.surface ?? "convex_squircle",
+        c.refractiveIndex ?? 1.5,
+      );
+    });
+  }
+}
+
+function getOrBuildMaps(
+  w: number,
+  h: number,
+  cornerRadius: number,
+  clampedBezel: number,
+  glassThickness: number,
+  surface: SurfaceKey,
+  refractiveIndex: number,
+): CachedMaps {
+  const key = `${w}|${h}|${cornerRadius}|${clampedBezel}|${glassThickness}|${surface}|${refractiveIndex}`;
+  const hit = mapCache.get(key);
+  if (hit) return hit;
+
+  const profile = calculateRefractionProfile(glassThickness, clampedBezel, SURFACE_FNS[surface], refractiveIndex, 128);
+  let maxDisp = 0;
+  for (let i = 0; i < profile.length; i++) {
+    const v = Math.abs(profile[i]);
+    if (v > maxDisp) maxDisp = v;
+  }
+  if (maxDisp === 0) maxDisp = 1;
+
+  const dispUrl = generateDisplacementMap(w, h, cornerRadius, clampedBezel, profile, maxDisp);
+  const specUrl = generateSpecularMap(w, h, cornerRadius, clampedBezel * 2.5);
+  const entry: CachedMaps = { dispUrl, specUrl, maxDisp };
+  mapCache.set(key, entry);
+  return entry;
+}
+
 /* ---------- Props ---------- */
 
 export interface LiquidGlassProps {
@@ -205,6 +305,13 @@ export interface LiquidGlassProps {
   outerShadowBlur?: number;
   /** Fallback blur (px) pro Safari/Firefox, kde url() filtr nefunguje. */
   fallbackBlur?: number;
+  /**
+   * Multiplier RGB složek backdroupu po průchodu filtrem (0..1). Aplikuje se
+   * jako poslední krok SVG filtru — uniformně ztmaví celý filtrovaný backdrop.
+   * Default 0.85 dává "dark glass" efekt s plně čitelným bílým textem na
+   * libovolném pozadí (eliminuje potřebu dynamic luminance sample/color swap).
+   */
+  brightness?: number;
   className?: string;
   style?: CSSProperties;
 }
@@ -229,22 +336,68 @@ export function LiquidGlass({
   innerShadowSpread = -5,
   outerShadowBlur = 24,
   fallbackBlur = 16,
+  brightness = 0.7,
   className,
   style,
 }: LiquidGlassProps) {
+  const { colorScheme } = useMantineColorScheme();
+  const isLight = colorScheme === "light";
+  // Chromatický tint (oranžová, modrá, …) = explicitní barva, kterou chce uživatel vidět v obou módech.
+  // Achromatický tint (bílá, černá, šedá) = výchozí "neutrální" sklo — v light módu přepneme na bílé.
+  const tintRgb = tintColor.split(",").map((s) => Number.parseInt(s.trim(), 10));
+  const isChromaticTint = tintRgb.length === 3 && Math.max(...tintRgb) - Math.min(...tintRgb) > 30;
+  const overrideToWhite = isLight && !isChromaticTint;
+  const effectiveTintColor = overrideToWhite ? "255, 255, 255" : tintColor;
+  const effectiveTintOpacity = overrideToWhite
+    ? tintOpacity * 7
+    : isLight && isChromaticTint
+      ? tintOpacity * 2.5
+      : tintOpacity;
+  const effectiveBrightness = overrideToWhite ? 1.15 : isLight && isChromaticTint ? 1.0 : brightness;
+
   const rootRef = useRef<HTMLDivElement>(null);
   const defsRef = useRef<SVGDefsElement>(null);
+  const maxDispRef = useRef<number>(1);
+  // Always holds the latest effectiveBrightness so stale ResizeObserver closures read current value
+  const brightnessRef = useRef(effectiveBrightness);
+  brightnessRef.current = effectiveBrightness;
   const rawId = useId();
   const filterId = `lg-${rawId.replace(/:/g, "")}`;
 
   const [resolvedRadius, setResolvedRadius] = useState(999);
+  const [filterReady, setFilterReady] = useState(false);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const root = rootRef.current;
     const defs = defsRef.current;
     if (!root || !defs) return;
 
     let frame = 0;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const buildFilterMarkup = (dispUrl: string, specUrl: string, filterScale: number, w: number, h: number) => {
+      // brightness multiply matrix — dark mode darkens (< 1), light mode neutral (1.0)
+      const b = brightnessRef.current;
+      return `
+        <filter id="${filterId}" x="0%" y="0%" width="100%" height="100%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="${blur}" result="blurred_source" />
+          <feImage href="${dispUrl}" x="0" y="0" width="${w}" height="${h}" result="disp_map" />
+          <feDisplacementMap in="blurred_source" in2="disp_map"
+            scale="${filterScale}" xChannelSelector="R" yChannelSelector="G"
+            result="displaced" />
+          <feColorMatrix in="displaced" type="saturate" values="${specularSaturation}" result="displaced_sat" />
+          <feImage href="${specUrl}" x="0" y="0" width="${w}" height="${h}" result="spec_layer" />
+          <feComposite in="displaced_sat" in2="spec_layer" operator="in" result="spec_masked" />
+          <feComponentTransfer in="spec_layer" result="spec_faded">
+            <feFuncA type="linear" slope="${specularOpacity}" />
+          </feComponentTransfer>
+          <feBlend in="spec_masked" in2="displaced" mode="normal" result="with_sat" />
+          <feBlend in="spec_faded" in2="with_sat" mode="normal" result="composited" />
+          <feColorMatrix in="composited" type="matrix"
+            values="${b} 0 0 0 0  0 ${b} 0 0 0  0 0 ${b} 0 0  0 0 0 1 0" />
+        </filter>
+      `;
+    };
 
     const rebuild = () => {
       const w = root.offsetWidth;
@@ -257,58 +410,80 @@ export function LiquidGlass({
       // bezel nikdy nesmí přesáhnout rádius ani půlku menší strany
       const clampedBezel = Math.min(bezelWidth, cornerRadius - 1, Math.min(w, h) / 2 - 1);
 
-      const heightFn = SURFACE_FNS[surface];
-      const profile = calculateRefractionProfile(glassThickness, clampedBezel, heightFn, refractiveIndex, 128);
-      const maxDisp = Math.max(...Array.from(profile).map(Math.abs)) || 1;
-      const dispUrl = generateDisplacementMap(w, h, cornerRadius, clampedBezel, profile, maxDisp);
-      const specUrl = generateSpecularMap(w, h, cornerRadius, clampedBezel * 2.5);
-      const scale = maxDisp * scaleRatio;
-
-      // přesně stejný filtr jako v originálu
-      defs.innerHTML = `
-        <filter id="${filterId}" x="0%" y="0%" width="100%" height="100%">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="${blur}" result="blurred_source" />
-          <feImage href="${dispUrl}" x="0" y="0" width="${w}" height="${h}" result="disp_map" />
-          <feDisplacementMap in="blurred_source" in2="disp_map"
-            scale="${scale}" xChannelSelector="R" yChannelSelector="G"
-            result="displaced" />
-          <feColorMatrix in="displaced" type="saturate" values="${specularSaturation}" result="displaced_sat" />
-          <feImage href="${specUrl}" x="0" y="0" width="${w}" height="${h}" result="spec_layer" />
-          <feComposite in="displaced_sat" in2="spec_layer" operator="in" result="spec_masked" />
-          <feComponentTransfer in="spec_layer" result="spec_faded">
-            <feFuncA type="linear" slope="${specularOpacity}" />
-          </feComponentTransfer>
-          <feBlend in="spec_masked" in2="displaced" mode="normal" result="with_sat" />
-          <feBlend in="spec_faded" in2="with_sat" mode="normal" />
-        </filter>
-      `;
+      // getOrBuildMaps je memoizované — cache hit = Map.get, cache miss = jediný
+      // sync gen na první mount dané velikosti. Po LiquidGlassPrewarm a memoizaci
+      // bývají naprostá většina mountů hit. Sync gen na miss je ~10ms blok, ale
+      // padne na frame 0 mountu — animace už běží opacity-only, takže missnutý
+      // jeden frame na startu je méně viditelný než nechybějící filtr po celou dobu.
+      const { dispUrl, specUrl, maxDisp } = getOrBuildMaps(
+        w,
+        h,
+        cornerRadius,
+        clampedBezel,
+        glassThickness,
+        surface,
+        refractiveIndex,
+      );
+      maxDispRef.current = maxDisp;
+      defs.innerHTML = buildFilterMarkup(dispUrl, specUrl, maxDisp * scaleRatio, w, h);
+      setFilterReady(true);
     };
 
+    // Debounce: během Framer layout animací (např. změna šířky headeru když
+    // se objeví/zmizí slot) by ResizeObserver firil na každém frameu a každý
+    // rebuild generuje 2 canvas mapy + nastavuje innerHTML SVG filtru —
+    // hlavní thread se zacpe a animace se sekají. Místo toho počkáme až
+    // resize doznívá a přebuilduje se jen jednou na konci. Během animace
+    // se stará displacement mapa lehce roztáhne, ale střed pillky je uniform
+    // (128,128,0) a netriviální zóna je jen v rozích → opticky nepostřehnutelné.
     const schedule = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => requestAnimationFrame(rebuild));
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(rebuild);
+      }, 120);
     };
 
-    schedule();
+    // První rebuild synchronně — filtr musí být hotov před first paint, jinak je vidět "snap in"
+    rebuild();
     const ro = new ResizeObserver(schedule);
     ro.observe(root);
 
     return () => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
       cancelAnimationFrame(frame);
       ro.disconnect();
     };
-  }, [
-    radius,
-    glassThickness,
-    bezelWidth,
-    refractiveIndex,
-    scaleRatio,
-    blur,
-    specularSaturation,
-    specularOpacity,
-    surface,
-    filterId,
-  ]);
+  }, [radius, glassThickness, bezelWidth, refractiveIndex, surface, filterId]);
+
+  // Light-props update — žádná regenerace canvas map, jen přepíše atributy v existujícím SVG filtru.
+  // Deps: blur, scaleRatio, specularSaturation, specularOpacity. Heavy rebuild (výše) nastavuje
+  // kompletní markup s aktuálními hodnotami → tento efekt poběží souběžně, ale idempotentně.
+  useEffect(() => {
+    const defs = defsRef.current;
+    if (!defs) return;
+    const filter = defs.querySelector(`#${filterId}`);
+    if (!filter) return;
+    (filter.querySelector("feGaussianBlur") as SVGFEGaussianBlurElement | null)?.setAttribute(
+      "stdDeviation",
+      String(blur),
+    );
+    (filter.querySelector("feDisplacementMap") as SVGFEDisplacementMapElement | null)?.setAttribute(
+      "scale",
+      String(maxDispRef.current * scaleRatio),
+    );
+    (filter.querySelector('feColorMatrix[type="saturate"]') as SVGFEColorMatrixElement | null)?.setAttribute(
+      "values",
+      String(specularSaturation),
+    );
+    (filter.querySelector("feFuncA") as SVGFEFuncAElement | null)?.setAttribute("slope", String(specularOpacity));
+    const b = effectiveBrightness;
+    (filter.querySelector('feColorMatrix[type="matrix"]') as SVGFEColorMatrixElement | null)?.setAttribute(
+      "values",
+      `${b} 0 0 0 0  0 ${b} 0 0 0  0 0 ${b} 0 0  0 0 0 1 0`,
+    );
+  }, [filterId, blur, scaleRatio, specularSaturation, specularOpacity, effectiveBrightness]);
 
   const br = radius === "pill" ? resolvedRadius : radius;
 
@@ -324,7 +499,8 @@ export function LiquidGlass({
         ...style,
       }}
     >
-      {/* Vrstva ZA contentem: backdrop-filter = liquid glass refrakce */}
+      {/* Backdrop — fallback blur dokud není SVG filtr v defs (před prvním paintem);
+          po rebuild() přepne na url() glass. Jedna vrstva = žádný double-blur. */}
       <div
         aria-hidden="true"
         style={{
@@ -332,26 +508,14 @@ export function LiquidGlass({
           inset: 0,
           borderRadius: "inherit",
           zIndex: 0,
-          // Chrome/Chromium: SVG filtr. Ostatní prohlížeče: prostý blur.
-          backdropFilter: `url(#${filterId})`,
-          WebkitBackdropFilter: `url(#${filterId})`,
-          // Fallback (Safari/FF) — ignoruje neznámou url() a vezme blur
+          backdropFilter: filterReady
+            ? `url(#${filterId})`
+            : `blur(${fallbackBlur}px) brightness(${effectiveBrightness})`,
+          WebkitBackdropFilter: filterReady
+            ? `url(#${filterId})`
+            : `blur(${fallbackBlur}px) brightness(${effectiveBrightness})`,
           background: "transparent",
-        }}
-      />
-      {/* Fallback blur vrstva — viditelná jen tam, kde url() filtr selže */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          borderRadius: "inherit",
-          zIndex: 0,
-          backdropFilter: `blur(${fallbackBlur}px)`,
-          WebkitBackdropFilter: `blur(${fallbackBlur}px)`,
-          // jen pro prohlížeče bez SVG-filter podpory; v Chrome překryto výše
-          pointerEvents: "none",
-          opacity: 0,
+          willChange: "backdrop-filter",
         }}
       />
       {/* Tint + vnitřní stín (z originálu ::before) */}
@@ -363,7 +527,8 @@ export function LiquidGlass({
           borderRadius: "inherit",
           zIndex: 1,
           pointerEvents: "none",
-          backgroundColor: `rgba(${tintColor}, ${tintOpacity})`,
+          backgroundColor: `rgba(${effectiveTintColor}, ${effectiveTintOpacity})`,
+          transition: "background-color 0.45s ease",
           boxShadow: `inset 0 0 ${innerShadowBlur}px ${innerShadowSpread}px ${innerShadowColor}`,
         }}
       />

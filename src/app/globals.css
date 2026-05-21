@@ -4,5 +4,22 @@
 @import "tailwindcss/preflight.css" layer(base);
 
 @import "@mantine/core/styles.layer.css";
+@import "@mantine/dropzone/styles.layer.css";
 
 @import "tailwindcss/utilities.css" layer(utilities);
+
+/* Adaptive CSS variables for glass surfaces — switch with Mantine color scheme */
+:root,
+[data-mantine-color-scheme="light"] {
+  --glass-hover-bg: rgba(0, 0, 0, 0.07);
+  --glass-active-bg: rgba(0, 0, 0, 0.12);
+  --glass-separator: rgba(0, 0, 0, 0.09);
+  --glass-badge-bg: rgba(0, 0, 0, 0.09);
+}
+
+[data-mantine-color-scheme="dark"] {
+  --glass-hover-bg: rgba(255, 255, 255, 0.1);
+  --glass-active-bg: rgba(255, 255, 255, 0.18);
+  --glass-separator: rgba(255, 255, 255, 0.12);
+  --glass-badge-bg: rgba(255, 255, 255, 0.22);
+}
