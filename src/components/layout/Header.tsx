@@ -8,7 +8,7 @@ import { useRef } from "react";
 import { useFilterState } from "@/components/infrastructure/FilterStateProvider";
 import { LiquidGlass } from "@/components/layout/LiquidGlass";
 import { SearchBar } from "@/components/layout/SearchBar";
-import { Link } from "@/i18n/navigation";
+import { Link, usePathname } from "@/i18n/navigation";
 
 const links = [
   { link: "/inzeraty", label: "Inzeráty" },
@@ -19,6 +19,8 @@ const HEADER_WIDTH_NORMAL = 720;
 const HEADER_WIDTH_NARROW = 560;
 const SPRING = { type: "spring", bounce: 0.28, duration: 0.55 } as const;
 
+const SEARCH_ROUTES = ["/inzeraty"];
+
 export function HeaderSearch() {
   const [opened, { toggle, close }] = useDisclosure(false);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -27,6 +29,8 @@ export function HeaderSearch() {
   const showSlotRight = headerSlotRight !== null;
   const showAnySlot = showSlot || showSlotRight;
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
+  const pathname = usePathname();
+  const hideSearch = !SEARCH_ROUTES.includes(pathname);
 
   // Odkazy v headeru — text napevno bílý. Dark-glass backdrop (brightness 0.85
   // v LiquidGlass) zajistí čitelnost na libovolném pozadí bez dynamic luminance.
@@ -193,9 +197,13 @@ export function HeaderSearch() {
               </Group>
 
               {/* Střed — search bar */}
-              <Group justify="center" style={{ flex: 1, minWidth: 0, margin: "0 12px" }} visibleFrom="sm">
-                <SearchBar />
-              </Group>
+              {!hideSearch ? (
+                <Group justify="center" style={{ flex: 1, minWidth: 0, margin: "0 12px" }} visibleFrom="sm">
+                  <SearchBar />
+                </Group>
+              ) : (
+                <div style={{ flex: 1, minWidth: 0 }} />
+              )}
 
               {/* Pravá část — navigace + přepínač tématu + burger */}
               <Group gap={4} justify="flex-end" style={{ flex: "0 0 auto" }}>
@@ -255,8 +263,12 @@ export function HeaderSearch() {
       >
         <ScrollArea h="calc(100vh - 80px)" mx="-md">
           <Divider my="sm" />
-          <SearchBar />
-          <Divider my="sm" />
+          {!hideSearch && (
+            <>
+              <SearchBar />
+              <Divider my="sm" />
+            </>
+          )}
           {drawerItems}
         </ScrollArea>
       </Drawer>
