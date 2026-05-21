@@ -1,5 +1,4 @@
 import { getTranslations } from "next-intl/server";
-import { HeaderSearch } from "@/components/layout/Header";
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -11,5 +10,5 @@ export async function generateMetadata() {
 }
 
 export default async function Page(_: PageProps<"/[locale]">) {
-  return <HeaderSearch />;
+  return;
 }

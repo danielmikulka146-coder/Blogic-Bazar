@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "@mantine/core/styles.css";
+import "@gfazioli/mantine-depth-select/styles.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,13 +18,7 @@ interface Props {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="cs">
-      <body
-        style={{
-          backgroundColor: "#11181C",
-        }}
-      >
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
