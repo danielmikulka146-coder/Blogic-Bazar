@@ -107,18 +107,31 @@ export default function NovyInzeratForm() {
       popis: "",
       kategorie: "",
       kontakt: "",
+      telefon: "",
       stav: "dostupné",
       cena: "" as number | string,
       free: false,
+      qrPlatba: false,
     },
     validate: {
       nazev: (v) => (v.trim().length < 3 ? "Název musí mít alespoň 3 znaky" : null),
       popis: (v) => (v.trim().length < 10 ? "Popis musí mít alespoň 10 znaků" : null),
       kategorie: (v) => (!v ? "Vyberte kategorii" : null),
-      kontakt: (v) => {
-        const t = v.trim();
-        if (t.length < 3) return "Zadejte kontakt";
-        if (t.includes("@") && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return "Zadejte platný e-mail";
+      kontakt: (v, values) => {
+        const email = v.trim();
+        const tel = values.telefon.trim();
+        if (email.length === 0 && tel.length === 0) return "Zadejte e-mail nebo telefon";
+        if (email.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Zadejte platný e-mail";
+        return null;
+      },
+      telefon: (v, values) => {
+        const tel = v.trim();
+        const email = values.kontakt.trim();
+        if (tel.length === 0 && email.length === 0) return "Zadejte telefon nebo e-mail";
+        if (tel.length > 0) {
+          const normalized = tel.replace(/[\s-]/g, "");
+          if (!/^(\+|00)?[0-9]{9,15}$/.test(normalized)) return "Zadejte platné telefonní číslo";
+        }
         return null;
       },
       cena: (v, values) => {
@@ -274,12 +287,28 @@ export default function NovyInzeratForm() {
                   {...form.getInputProps("cena")}
                 />
               )}
+              {!form.values.free && (
+                <Checkbox
+                  label="QR platba"
+                  description="V detailu inzerátu se zobrazí QR kód pro rychlou platbu"
+                  {...form.getInputProps("qrPlatba", { type: "checkbox" })}
+                />
+              )}
             </Stack>
           </Paper>
 
           {/* KONTAKT */}
           <Paper p="md" radius="md" withBorder>
-            <TextInput label="Kontakt" placeholder="Email nebo telefon" {...form.getInputProps("kontakt")} />
+            <Stack gap="md">
+              <Text fw={500} size="sm">
+                Kontakt{" "}
+                <Text span c="dimmed" size="xs">
+                  (stačí jedno)
+                </Text>
+              </Text>
+              <TextInput label="E-mail" placeholder="vas@email.cz" type="email" {...form.getInputProps("kontakt")} />
+              <TextInput label="Telefon" placeholder="+420 123 456 789" type="tel" {...form.getInputProps("telefon")} />
+            </Stack>
           </Paper>
         </Stack>
 
