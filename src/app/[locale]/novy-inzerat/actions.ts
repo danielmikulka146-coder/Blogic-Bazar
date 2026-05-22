@@ -5,6 +5,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { inzeraty } from "@/db/schemas";
+import { imageToWebp, toWebpFilename } from "@/lib/serverImageProcess";
 import { dropSessionDir } from "@/lib/uploadSession";
 
 export async function vytvorInzerat(formData: FormData) {
@@ -37,25 +38,23 @@ export async function vytvorInzerat(formData: FormData) {
 
     for (const file of platneFiles) {
       const buffer = Buffer.from(await file.arrayBuffer());
-      const filename = `${Date.now()}-${file.name}`;
-      await fs.writeFile(path.join(dir, filename), buffer);
+      const webp = await imageToWebp(buffer);
+      const filename = toWebpFilename(`${Date.now()}-${file.name}`);
+      await fs.writeFile(path.join(dir, filename), webp);
       fotoPaths.push(`/inzeraty/${id}/${filename}`);
     }
 
     for (const webPath of platneRemote) {
       const safe = webPath.replace(/^\/+/, "").split("/").filter(Boolean);
       const src = path.join(process.cwd(), "public", ...safe);
-      const filename = safe[safe.length - 1];
+      const filename = toWebpFilename(safe[safe.length - 1]);
       const dest = path.join(dir, filename);
       try {
-        await fs.rename(src, dest);
+        const webp = await imageToWebp(src);
+        await fs.writeFile(dest, webp);
+        await fs.unlink(src).catch(() => {});
       } catch {
-        try {
-          await fs.copyFile(src, dest);
-          await fs.unlink(src).catch(() => {});
-        } catch {
-          continue;
-        }
+        continue;
       }
       fotoPaths.push(`/inzeraty/${id}/${filename}`);
     }

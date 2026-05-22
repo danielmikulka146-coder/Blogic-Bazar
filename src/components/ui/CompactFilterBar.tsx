@@ -190,13 +190,13 @@ export function CompactFilterBar({
   );
 
   return (
-    <motion.div
+    <div
       ref={containerRef}
-      animate={{ opacity: visible ? 1 : 0 }}
-      transition={{ duration: 0.25, ease: "easeOut" }}
       style={{
         position: "relative",
         display: "inline-block",
+        opacity: visible ? 1 : 0,
+        transition: "opacity 0.2s ease-out",
         pointerEvents: visible ? "auto" : "none",
       }}
     >
@@ -265,6 +265,6 @@ export function CompactFilterBar({
           </AnimatePresence>
         </LiquidGlass>
       </motion.div>
-    </motion.div>
+    </div>
   );
 }

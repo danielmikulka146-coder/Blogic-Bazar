@@ -6,6 +6,11 @@ const nextConfig = {
   images: {
     remotePatterns: [{ hostname: "placehold.co" }],
   },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "50mb",
+    },
+  },
 };
 
 const withNextIntl = createNextIntlPlugin();
