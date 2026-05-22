@@ -27,7 +27,7 @@ type Inzerat = {
 type Props = { data: Inzerat[] };
 
 export function InzeratyListClient({ data }: Props) {
-  const { searchQuery, setHeaderSlot } = useFilterState();
+  const { searchQuery, setHeaderSlot, setHeaderSlotActive } = useFilterState();
   const [kategorie, setKategorie] = useState<string[]>([]);
   const [stavy, setStavy] = useState<string[]>([]);
   const [stavyZbozi, setStavyZbozi] = useState<string[]>([]);
@@ -111,8 +111,7 @@ export function InzeratyListClient({ data }: Props) {
   // CompactFilterBar je v header slotu vždy (i když ho user nevidí). Visible prop
   // řídí pouze opacity — LiquidGlass instance zůstává mountnutá od mountu stránky,
   // takže když chips zmizí ze zorného pole, pilulka se objeví bez "snap into existence"
-  // efektu. Animace header pillu (wide ↔ narrow) běží jen na page-level transition
-  // (mount/unmount stránky), ne na scroll.
+  // efektu. headerSlotActive řídí animaci hlavní pilulky mezi centrem a off-center.
   useEffect(() => {
     setHeaderSlot(
       <CompactFilterBar
@@ -144,8 +143,19 @@ export function InzeratyListClient({ data }: Props) {
     setHeaderSlot,
   ]);
 
+  // Slot je "aktivní" když chips nejsou ve view → hlavní pilulka se posune off-center
+  useEffect(() => {
+    setHeaderSlotActive(!chipsInView);
+  }, [chipsInView, setHeaderSlotActive]);
+
   // Cleanup při unmountu (např. navigace pryč ze stránky)
-  useEffect(() => () => setHeaderSlot(null), [setHeaderSlot]);
+  useEffect(
+    () => () => {
+      setHeaderSlot(null);
+      setHeaderSlotActive(false);
+    },
+    [setHeaderSlot, setHeaderSlotActive],
+  );
 
   return (
     <Stack gap="lg">

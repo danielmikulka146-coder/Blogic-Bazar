@@ -3,6 +3,7 @@
 import { Alert, Badge, Box, Button, Group, Image, Paper, Progress, Stack, Text, Title } from "@mantine/core";
 import { Camera, CheckCircle2, ImageIcon, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { resizeImageIfLarger } from "@/lib/clientImageResize";
 
 type UploadedItem = {
   id: string;
@@ -48,9 +49,10 @@ export default function NahravaniObrazkuClient({ sessionKey }: { sessionKey: str
       setItems((prev) => [...prev, ...newItems]);
 
       for (let i = 0; i < arr.length; i++) {
-        const file = arr[i];
+        const original = arr[i];
         const itemId = newItems[i].id;
         try {
+          const file = await resizeImageIfLarger(original);
           const fd = new FormData();
           fd.append("foto", file);
           const res = await fetch(`/api/upload-session/${sessionKey}/foto`, {

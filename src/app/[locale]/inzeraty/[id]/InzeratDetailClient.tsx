@@ -38,10 +38,15 @@ function stavColor(stav: string) {
 
 function RezervujButton({ onClick, pending }: { onClick: () => void; pending: boolean }) {
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onClick}
       disabled={pending}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: pending ? 0.65 : 1, y: 0 }}
+      whileHover={pending ? undefined : { scale: 1.03 }}
+      whileTap={pending ? undefined : { scale: 0.96 }}
+      transition={{ type: "spring", stiffness: 380, damping: 24 }}
       style={{
         border: "none",
         background: "transparent",
@@ -49,8 +54,9 @@ function RezervujButton({ onClick, pending }: { onClick: () => void; pending: bo
         padding: 0,
         display: "block",
         width: "100%",
-        opacity: pending ? 0.65 : 1,
-        transition: "opacity 0.15s",
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: 12,
       }}
     >
       <LiquidGlass
@@ -68,13 +74,34 @@ function RezervujButton({ onClick, pending }: { onClick: () => void; pending: bo
         innerShadowSpread={-3}
         outerShadowBlur={20}
         fallbackBlur={16}
-        style={{ padding: "12px 0", textAlign: "center" }}
+        style={{ padding: "12px 0", textAlign: "center", position: "relative", overflow: "hidden" }}
       >
-        <Text fw={600} c="var(--mantine-color-text)" size="sm" style={{ whiteSpace: "nowrap" }}>
+        {/* Subtle shimmer — periodicky projede přes tlačítko, ať na sebe upoutá pozornost */}
+        {!pending && (
+          <motion.div
+            aria-hidden="true"
+            initial={{ x: "-130%" }}
+            animate={{ x: "130%" }}
+            transition={{ duration: 1.6, ease: "easeInOut", repeat: Infinity, repeatDelay: 3.2 }}
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.28) 50%, transparent 100%)",
+              pointerEvents: "none",
+              zIndex: 10,
+            }}
+          />
+        )}
+        <Text
+          fw={600}
+          c="var(--mantine-color-text)"
+          size="sm"
+          style={{ whiteSpace: "nowrap", position: "relative", zIndex: 1 }}
+        >
           {pending ? "Rezervuji…" : "Zarezervovat"}
         </Text>
       </LiquidGlass>
-    </button>
+    </motion.button>
   );
 }
 
@@ -122,117 +149,108 @@ function HeaderRightSlot({
   stav,
   onRezervovat,
   pending,
-  visible = true,
 }: {
   cenaText: string;
   stav: string;
   onRezervovat: () => void;
   pending: boolean;
-  /** Když false, pilulka je v DOM, ale opacity 0 (warm LiquidGlass, žádný snap při scrollu). */
-  visible?: boolean;
 }) {
   const canReserve = stav === "dostupné";
 
   return (
-    <motion.div
-      animate={{ opacity: visible ? 1 : 0 }}
-      transition={{ duration: 0.25, ease: "easeOut" }}
-      style={{ pointerEvents: visible ? "auto" : "none" }}
+    <LiquidGlass
+      radius="pill"
+      glassThickness={80}
+      bezelWidth={60}
+      refractiveIndex={1.5}
+      scaleRatio={0.7}
+      blur={1.0}
+      specularSaturation={4}
+      specularOpacity={0.75}
+      tintColor="253, 126, 20"
+      tintOpacity={canReserve ? 0.1 : 1.0}
+      innerShadowBlur={10}
+      innerShadowSpread={-4}
+      outerShadowBlur={28}
+      fallbackBlur={18}
+      style={{ padding: "7px 8px", overflow: "hidden" }}
     >
-      <LiquidGlass
-        radius="pill"
-        glassThickness={80}
-        bezelWidth={60}
-        refractiveIndex={1.5}
-        scaleRatio={0.7}
-        blur={1.0}
-        specularSaturation={4}
-        specularOpacity={0.75}
-        tintColor="253, 126, 20"
-        tintOpacity={canReserve ? 0.1 : 1.0}
-        innerShadowBlur={10}
-        innerShadowSpread={-4}
-        outerShadowBlur={28}
-        fallbackBlur={18}
-        style={{ padding: "7px 8px", overflow: "hidden" }}
-      >
-        {/* Shimmer — projede jednou po přechodu do reserved */}
-        <AnimatePresence initial={false}>
-          {!canReserve && (
-            <motion.div
-              key="shimmer"
-              initial={{ x: "-130%" }}
-              animate={{ x: "130%" }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.65, ease: "easeOut", delay: 0.1 }}
+      {/* Shimmer — projede jednou po přechodu do reserved */}
+      <AnimatePresence initial={false}>
+        {!canReserve && (
+          <motion.div
+            key="shimmer"
+            initial={{ x: "-130%" }}
+            animate={{ x: "130%" }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.65, ease: "easeOut", delay: 0.1 }}
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.32) 50%, transparent 100%)",
+              pointerEvents: "none",
+              zIndex: 10,
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <Group gap={6} align="center" wrap="nowrap" style={{ height: 34 }}>
+        <Text size="sm" fw={700} c="var(--mantine-color-text)" style={{ paddingLeft: 8, whiteSpace: "nowrap" }}>
+          {cenaText}
+        </Text>
+
+        {/* Animovaný swap obsahu: button ↔ status text */}
+        <AnimatePresence mode="wait" initial={false}>
+          {canReserve ? (
+            <motion.button
+              key="btn"
+              type="button"
+              onClick={onRezervovat}
+              disabled={pending}
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: pending ? 0.6 : 1, y: 0 }}
+              exit={{ opacity: 0, y: 5 }}
+              transition={{ duration: 0.16 }}
               style={{
-                position: "absolute",
-                inset: 0,
-                background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.32) 50%, transparent 100%)",
-                pointerEvents: "none",
-                zIndex: 10,
+                border: "none",
+                background: "rgba(253, 126, 20, 0.28)",
+                cursor: pending ? "not-allowed" : "pointer",
+                padding: "4px 14px",
+                borderRadius: 999,
+                color: "var(--mantine-color-text)",
+                fontSize: 13,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                fontFamily: "inherit",
               }}
-            />
+            >
+              {pending ? "Rezervuji…" : "Zarezervovat"}
+            </motion.button>
+          ) : (
+            <motion.span
+              key="status"
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 5 }}
+              transition={{ duration: 0.16 }}
+              style={{
+                padding: "4px 14px",
+                borderRadius: 999,
+                background: "rgba(255, 255, 255, 0.22)",
+                color: "var(--mantine-color-text)",
+                fontSize: 13,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                display: "inline-block",
+              }}
+            >
+              {stav}
+            </motion.span>
           )}
         </AnimatePresence>
-
-        <Group gap={6} align="center" wrap="nowrap" style={{ height: 34 }}>
-          <Text size="sm" fw={700} c="var(--mantine-color-text)" style={{ paddingLeft: 8, whiteSpace: "nowrap" }}>
-            {cenaText}
-          </Text>
-
-          {/* Animovaný swap obsahu: button ↔ status text */}
-          <AnimatePresence mode="wait" initial={false}>
-            {canReserve ? (
-              <motion.button
-                key="btn"
-                type="button"
-                onClick={onRezervovat}
-                disabled={pending}
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: pending ? 0.6 : 1, y: 0 }}
-                exit={{ opacity: 0, y: 5 }}
-                transition={{ duration: 0.16 }}
-                style={{
-                  border: "none",
-                  background: "rgba(253, 126, 20, 0.28)",
-                  cursor: pending ? "not-allowed" : "pointer",
-                  padding: "4px 14px",
-                  borderRadius: 999,
-                  color: "var(--mantine-color-text)",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  whiteSpace: "nowrap",
-                  fontFamily: "inherit",
-                }}
-              >
-                {pending ? "Rezervuji…" : "Zarezervovat"}
-              </motion.button>
-            ) : (
-              <motion.span
-                key="status"
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 5 }}
-                transition={{ duration: 0.16 }}
-                style={{
-                  padding: "4px 14px",
-                  borderRadius: 999,
-                  background: "rgba(255, 255, 255, 0.22)",
-                  color: "var(--mantine-color-text)",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  whiteSpace: "nowrap",
-                  display: "inline-block",
-                }}
-              >
-                {stav}
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </Group>
-      </LiquidGlass>
-    </motion.div>
+      </Group>
+    </LiquidGlass>
   );
 }
 
@@ -240,7 +258,7 @@ export function InzeratDetailClient({ inzerat, fotky }: { inzerat: InzeratData; 
   const [stav, setStav] = useState(inzerat.stav);
   const [pending, setPending] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
-  const { setHeaderSlotRight } = useFilterState();
+  const { setHeaderSlotRight, setHeaderSlotRightActive } = useFilterState();
   const actionRef = useRef<HTMLDivElement>(null);
   const [actionVisible, setActionVisible] = useState(true);
 
@@ -274,24 +292,27 @@ export function InzeratDetailClient({ inzerat, fotky }: { inzerat: InzeratData; 
     return () => observer.disconnect();
   }, []);
 
-  // Right slot je v DOM vždy — LiquidGlass zůstává namountovaný, takže když uživatel
-  // scrollne přes akční sekci, pilulka se objeví bez "snap into existence" efektu.
-  // Visible prop řídí pouze opacity. Animace header pillu (wide ↔ narrow) běží jen
-  // při page-level mount/unmount.
+  // Right slot je vždy zaregistrovaný v contextu (kvůli stability cache),
+  // headerSlotRightActive řídí animaci hlavní pilulky mezi centrem a off-center.
   useEffect(() => {
     setHeaderSlotRight(
-      <HeaderRightSlot
-        cenaText={cenaText}
-        stav={stav}
-        onRezervovat={handleRezervovat}
-        pending={pending}
-        visible={!actionVisible}
-      />,
+      <HeaderRightSlot cenaText={cenaText} stav={stav} onRezervovat={handleRezervovat} pending={pending} />,
     );
-  }, [actionVisible, stav, cenaText, pending, handleRezervovat, setHeaderSlotRight]);
+  }, [stav, cenaText, pending, handleRezervovat, setHeaderSlotRight]);
+
+  // Slot je "aktivní" když uživatel scrollne přes akční sekci → hlavní pilulka se posune off-center
+  useEffect(() => {
+    setHeaderSlotRightActive(!actionVisible);
+  }, [actionVisible, setHeaderSlotRightActive]);
 
   // Cleanup při navigaci pryč
-  useEffect(() => () => setHeaderSlotRight(null), [setHeaderSlotRight]);
+  useEffect(
+    () => () => {
+      setHeaderSlotRight(null);
+      setHeaderSlotRightActive(false);
+    },
+    [setHeaderSlotRight, setHeaderSlotRightActive],
+  );
 
   return (
     <Stack gap="xl" maw={900} mx="auto">

@@ -31,10 +31,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LiquidGlass } from "@/components/layout/LiquidGlass";
 import { GlassSelect } from "@/components/ui/GlassSelect";
 import { useRouter } from "@/i18n/navigation";
+import { resizeImageIfLarger } from "@/lib/clientImageResize";
 import { vytvorInzerat } from "./actions";
 
 const KATEGORIE = ["Elektronika", "Oblečení", "Nábytek", "Sport", "Knihy", "Auto-moto", "Jiné"];
-const STAVY = ["dostupné", "rezervováno", "prodáno"];
 const STAVY_ZBOZI = ["nové", "jako nové", "použité", "opotřebované", "poškozené"];
 
 type FotoItem = {
@@ -120,21 +120,32 @@ export default function NovyInzeratForm() {
     };
   }, []);
 
-  const openPhoneUpload = useCallback(async () => {
+  // Předgenerování QR na pozadí hned po mountu
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/upload-session", { method: "POST" });
+        const data = (await res.json()) as { key: string };
+        if (cancelled) return;
+        const url = `${window.location.origin}/${locale}/nahravani-obrazku?key=${data.key}`;
+        const qr = await QRCode.toDataURL(url, { width: 320, margin: 1 });
+        if (cancelled) return;
+        setUploadSessionKey(data.key);
+        setUploadUrl(url);
+        setQrDataUrl(qr);
+      } catch {
+        /* tiché selhání — QR se zobrazí jako spinner */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
+
+  const openPhoneUpload = useCallback(() => {
     setPhoneModalOpen(true);
-    if (uploadSessionKey) return;
-    try {
-      const res = await fetch("/api/upload-session", { method: "POST" });
-      const data = (await res.json()) as { key: string };
-      const url = `${window.location.origin}/${locale}/nahravani-obrazku?key=${data.key}`;
-      const qr = await QRCode.toDataURL(url, { width: 320, margin: 1 });
-      setUploadSessionKey(data.key);
-      setUploadUrl(url);
-      setQrDataUrl(qr);
-    } catch {
-      setPhoneModalOpen(false);
-    }
-  }, [uploadSessionKey, locale]);
+  }, []);
 
   // Polling — když je modal otevřený nebo session existuje, pravidelně se ptá serveru
   useEffect(() => {
@@ -220,8 +231,9 @@ export default function NovyInzeratForm() {
     },
   });
 
-  function pridejFotky(dropped: File[]) {
-    const nove: FotoItem[] = dropped.map((file) => ({
+  async function pridejFotky(dropped: File[]) {
+    const resized = await Promise.all(dropped.map((f) => resizeImageIfLarger(f)));
+    const nove: FotoItem[] = resized.map((file) => ({
       id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
       file,
       url: URL.createObjectURL(file),
@@ -359,15 +371,12 @@ export default function NovyInzeratForm() {
                 {...form.getInputProps("popis")}
               />
 
-              <Group grow>
-                <GlassSelect
-                  label="Kategorie"
-                  placeholder="Vyberte"
-                  data={KATEGORIE}
-                  {...form.getInputProps("kategorie")}
-                />
-                <GlassSelect label="Stav" data={STAVY} {...form.getInputProps("stav")} />
-              </Group>
+              <GlassSelect
+                label="Kategorie"
+                placeholder="Vyberte"
+                data={KATEGORIE}
+                {...form.getInputProps("kategorie")}
+              />
 
               <GlassSelect
                 label="Stav zboží"

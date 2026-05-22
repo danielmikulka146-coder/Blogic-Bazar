@@ -22,10 +22,13 @@ const SEARCH_ROUTES = ["/inzeraty"];
 
 export function HeaderSearch() {
   const [opened, { toggle, close }] = useDisclosure(false);
-  const { headerSlot, headerSlotRight } = useFilterState();
+  const { headerSlot, headerSlotActive, headerSlotRight, headerSlotRightActive } = useFilterState();
   const showSlot = headerSlot !== null;
   const showSlotRight = headerSlotRight !== null;
-  const showAnySlot = showSlot || showSlotRight;
+  // showAnySlot řídí šířku/pozici hlavní pilulky. Posun mimo střed nastane jen
+  // když je některý slot opticky aktivní. Když je slot mountnutý ale neaktivní,
+  // hlavní pilulka zůstává centrovaná.
+  const showAnySlot = (showSlot && headerSlotActive) || (showSlotRight && headerSlotRightActive);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const pathname = usePathname();
   const hideSearch = !SEARCH_ROUTES.includes(pathname);
@@ -84,7 +87,7 @@ export function HeaderSearch() {
           pointerEvents: "none",
           backdropFilter: "blur(2px)",
           WebkitBackdropFilter: "blur(2px)",
-          background: colorScheme === "dark" ? "rgba(0, 0, 0, 0.2)" : "rgba(255, 255, 255, 0.2)",
+          background: colorScheme === "dark" ? "rgba(0, 0, 0, 0.3)" : "rgba(255, 255, 255, 0.3)",
           maskImage: "linear-gradient(to bottom, black, transparent)",
           WebkitMaskImage: "linear-gradient(to bottom, black, transparent)",
         }}
@@ -108,17 +111,17 @@ export function HeaderSearch() {
             pointerEvents: "none",
           }}
         >
-          {/* Levý slot (CompactFilterBar na /inzeraty) */}
+          {/* Levý slot (CompactFilterBar na /inzeraty) — mountnutý jen když je aktivní.
+              Mount/unmount způsobí, že flex layout přepočítá pozici hlavní pilulky →
+              layout="position" na main pillu animuje přechod mezi centrem a off-center. */}
           <AnimatePresence initial={false}>
-            {showSlot && (
+            {showSlot && headerSlotActive && (
               <motion.div
                 key="slot"
                 layout="position"
-                // Opacity-only: backdrop-filter bounds se nemění → GPU cache zůstává.
-                // Pozn.: žádný will-change ani translateZ(0) — viz komentář na main pill.
                 initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeOut" } }}
+                animate={{ opacity: 1, transition: { duration: 0.2, ease: "easeOut" } }}
+                exit={{ opacity: 0, transition: { duration: 0.15, ease: "easeOut" } }}
                 transition={SPRING}
                 style={{ flex: "0 0 auto", pointerEvents: "auto" }}
               >
@@ -219,15 +222,16 @@ export function HeaderSearch() {
             </LiquidGlass>
           </motion.div>
 
-          {/* Pravý slot (cena + rezervace na detail stránce) */}
+          {/* Pravý slot (cena + rezervace na detail stránce) — mountnutý jen když je aktivní.
+              Mount/unmount způsobí, že flex layout přepočítá pozici hlavní pilulky. */}
           <AnimatePresence initial={false}>
-            {showSlotRight && (
+            {showSlotRight && headerSlotRightActive && (
               <motion.div
                 key="slot-right"
                 layout="position"
                 initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeOut" } }}
+                animate={{ opacity: 1, transition: { duration: 0.2, ease: "easeOut" } }}
+                exit={{ opacity: 0, transition: { duration: 0.15, ease: "easeOut" } }}
                 transition={SPRING}
                 style={{ flex: "0 0 auto", pointerEvents: "auto" }}
               >
