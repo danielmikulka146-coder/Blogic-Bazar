@@ -13,6 +13,7 @@ type Session = {
   key: string;
   createdAt: number;
   fotky: UploadedFoto[];
+  mobileConnected: boolean;
 };
 
 const TTL_MS = 60 * 60 * 1000;
@@ -41,7 +42,7 @@ function purgeExpired() {
 export function createSession(): Session {
   purgeExpired();
   const key = crypto.randomBytes(12).toString("base64url");
-  const session: Session = { key, createdAt: Date.now(), fotky: [] };
+  const session: Session = { key, createdAt: Date.now(), fotky: [], mobileConnected: false };
   sessions.set(key, session);
   return session;
 }
@@ -83,6 +84,13 @@ export async function consumeSession(key: string): Promise<{ filePath: string; w
   }));
   sessions.delete(key);
   return files;
+}
+
+export function setMobileConnected(key: string): boolean {
+  const session = getSession(key);
+  if (!session) return false;
+  session.mobileConnected = true;
+  return true;
 }
 
 export async function removeFoto(key: string, filename: string): Promise<boolean> {

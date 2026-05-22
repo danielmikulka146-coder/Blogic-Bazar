@@ -13,6 +13,7 @@ export async function vytvorInzerat(formData: FormData) {
   const kategorie = formData.get("kategorie") as string;
   const kontakt = formData.get("kontakt") as string;
   const telefon = (formData.get("telefon") as string) || null;
+  const stavZbozi = (formData.get("stavZbozi") as string) || null;
   const stav = formData.get("stav") as string;
   const cena = Number(formData.get("cena"));
   const free = formData.get("free") === "true";
@@ -23,7 +24,7 @@ export async function vytvorInzerat(formData: FormData) {
 
   const [{ id }] = await db
     .insert(inzeraty)
-    .values({ nazev, popis, kategorie, kontakt, telefon, stav, cena, free, qrPlatba, foto: "[]" })
+    .values({ nazev, popis, kategorie, kontakt, telefon, stav, stavZbozi, cena, free, qrPlatba, foto: "[]" })
     .returning({ id: inzeraty.id });
 
   const platneFiles = files.filter((f) => f.size > 0);

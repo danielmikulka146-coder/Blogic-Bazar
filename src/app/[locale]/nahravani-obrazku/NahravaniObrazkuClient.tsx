@@ -25,7 +25,12 @@ export default function NahravaniObrazkuClient({ sessionKey }: { sessionKey: str
       return;
     }
     fetch(`/api/upload-session/${sessionKey}`)
-      .then((r) => setSessionOk(r.ok))
+      .then((r) => {
+        setSessionOk(r.ok);
+        if (r.ok) {
+          fetch(`/api/upload-session/${sessionKey}/connected`, { method: "POST" }).catch(() => {});
+        }
+      })
       .catch(() => setSessionOk(false));
   }, [sessionKey]);
 
@@ -89,7 +94,7 @@ export default function NahravaniObrazkuClient({ sessionKey }: { sessionKey: str
     };
     const interval = setInterval(() => {
       if (!stopped) tick();
-    }, 2500);
+    }, 1000);
     return () => {
       stopped = true;
       clearInterval(interval);
@@ -123,47 +128,51 @@ export default function NahravaniObrazkuClient({ sessionKey }: { sessionKey: str
           </Text>
         </Stack>
 
-        <Group grow gap="sm">
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            multiple
-            style={{ display: "none" }}
-            onChange={(e) => {
-              if (e.target.files) uploadFiles(e.target.files);
-              e.target.value = "";
-            }}
-          />
-          <input
-            ref={galleryInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            style={{ display: "none" }}
-            onChange={(e) => {
-              if (e.target.files) uploadFiles(e.target.files);
-              e.target.value = "";
-            }}
-          />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => {
+            if (e.target.files) uploadFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => {
+            if (e.target.files) uploadFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <div style={{ display: "flex", gap: 12, width: "100%" }}>
           <Button
-            size="lg"
-            leftSection={<Camera size={20} />}
+            size="xl"
+            radius="xl"
+            leftSection={<Camera size={22} />}
             onClick={() => cameraInputRef.current?.click()}
             color="orange"
+            style={{ flex: 1, minWidth: 0, height: 64, fontSize: 16 }}
           >
             Vyfotit
           </Button>
           <Button
-            size="lg"
+            size="xl"
+            radius="xl"
             variant="light"
-            leftSection={<ImageIcon size={20} />}
+            leftSection={<ImageIcon size={22} />}
             onClick={() => galleryInputRef.current?.click()}
+            style={{ flex: 1, minWidth: 0, height: 64, fontSize: 16 }}
           >
             Galerie
           </Button>
-        </Group>
+        </div>
 
         {items.length > 0 && (
           <Paper p="md" radius="md" withBorder>

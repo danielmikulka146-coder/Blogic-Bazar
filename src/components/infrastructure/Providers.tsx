@@ -15,6 +15,11 @@ const LIQUID_GLASS_PREWARM: LiquidGlassPrewarmConfig[] = [
   // Header pill — oba stavy (showSlot true/false)
   { width: 720, height: 48, glassThickness: 80, bezelWidth: 60 },
   { width: 560, height: 48, glassThickness: 80, bezelWidth: 60 },
+  // HeaderRightSlot (cenová pilulka vedle headeru na detailu inzerátu) — pár typických šířek
+  // pro různě dlouhé ceny (od "Zdarma" po "12 345 Kč" + button/status).
+  { width: 200, height: 48, glassThickness: 80, bezelWidth: 60 },
+  { width: 240, height: 48, glassThickness: 80, bezelWidth: 60 },
+  { width: 280, height: 48, glassThickness: 80, bezelWidth: 60 },
 ];
 
 let browserQueryClient: QueryClient | undefined;

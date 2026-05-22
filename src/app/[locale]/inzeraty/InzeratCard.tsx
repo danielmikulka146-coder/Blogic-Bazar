@@ -13,6 +13,7 @@ type InzeratCardProps = {
   foto: string;
   kategorie: string;
   stav: string;
+  stavZbozi: string | null;
   cena: number | null;
   free: boolean;
 };
@@ -20,7 +21,7 @@ type InzeratCardProps = {
 const RESET_TILT = "perspective(800px) rotateX(0deg) rotateY(0deg) translateZ(0)";
 const MAX_TILT = 8;
 
-export function InzeratCard({ id, nazev, foto, kategorie, stav, cena, free }: InzeratCardProps) {
+export function InzeratCard({ id, nazev, foto, kategorie, stav, stavZbozi, cena, free }: InzeratCardProps) {
   const cardRef = useRef<HTMLAnchorElement>(null);
   const [transform, setTransform] = useState(RESET_TILT);
 
@@ -68,13 +69,20 @@ export function InzeratCard({ id, nazev, foto, kategorie, stav, cena, free }: In
         <Image src={hlavniFotka(foto)} alt={nazev} fill style={{ objectFit: "cover" }} />
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, gap: 6 }}>
         <Badge color="blue" variant="light">
           {kategorie}
         </Badge>
-        <Badge color={stav === "dostupné" ? "green" : stav === "prodáno" ? "red" : "orange"} variant="light">
-          {stav}
-        </Badge>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {stavZbozi && (
+            <Badge color="grape" variant="light">
+              {stavZbozi}
+            </Badge>
+          )}
+          <Badge color={stav === "dostupné" ? "green" : stav === "prodáno" ? "red" : "orange"} variant="light">
+            {stav}
+          </Badge>
+        </div>
       </div>
 
       <Title order={3} c="var(--mantine-color-text)" mt={8}>

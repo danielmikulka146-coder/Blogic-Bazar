@@ -18,6 +18,7 @@ type Inzerat = {
   kategorie: string;
   kontakt: string;
   stav: string;
+  stavZbozi: string | null;
   foto: string;
   cena: number;
   free: boolean;
@@ -29,25 +30,49 @@ export function InzeratyListClient({ data }: Props) {
   const { searchQuery, setHeaderSlot } = useFilterState();
   const [kategorie, setKategorie] = useState<string[]>([]);
   const [stavy, setStavy] = useState<string[]>([]);
+  const [stavyZbozi, setStavyZbozi] = useState<string[]>([]);
   const [jenZdarma, setJenZdarma] = useState(false);
 
   const filterRowRef = useRef<HTMLDivElement>(null);
   const [chipsInView, setChipsInView] = useState(true);
 
-  // Unikátní kategorie a stavy odvozené z dat (žádná pevná lista)
   const allKategorie = useMemo(() => Array.from(new Set(data.map((d) => d.kategorie))).sort(), [data]);
-  const allStavy = useMemo(() => Array.from(new Set(data.map((d) => d.stav))).sort(), [data]);
+  // Stav: vždy nabízíme dostupné + zarezervováno (i kdyby zatím nebyly v datech),
+  // plus jakékoli další stavy které v datech reálně existují.
+  const allStavy = useMemo(() => {
+    const fromData = new Set(data.map((d) => d.stav).filter(Boolean));
+    fromData.add("dostupné");
+    fromData.add("zarezervováno");
+    const order = ["dostupné", "zarezervováno", "rezervováno", "prodáno"];
+    return Array.from(fromData).sort((a, b) => {
+      const ai = order.indexOf(a);
+      const bi = order.indexOf(b);
+      if (ai === -1 && bi === -1) return a.localeCompare(b, "cs");
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+  }, [data]);
+  // Stav zboží: vždy zobrazit všechny předdefinované volby (nezávisle na datech).
+  const allStavyZbozi = useMemo(() => ["nové", "jako nové", "použité", "opotřebované", "poškozené"], []);
 
   const filtered = useMemo(() => {
+    // "zarezervováno" a "rezervováno" jsou v datech promíchané — bereme je jako totéž.
+    const reservedAliases = ["zarezervováno", "rezervováno"];
+    const stavMatches = (filter: string, value: string) => {
+      if (reservedAliases.includes(filter)) return reservedAliases.includes(value);
+      return filter === value;
+    };
     const q = searchQuery.trim().toLowerCase();
     return data.filter((i) => {
       if (q && !i.nazev.toLowerCase().includes(q)) return false;
       if (kategorie.length > 0 && !kategorie.includes(i.kategorie)) return false;
-      if (stavy.length > 0 && !stavy.includes(i.stav)) return false;
+      if (stavy.length > 0 && !stavy.some((s) => stavMatches(s, i.stav))) return false;
+      if (stavyZbozi.length > 0 && (!i.stavZbozi || !stavyZbozi.includes(i.stavZbozi))) return false;
       if (jenZdarma && !i.free) return false;
       return true;
     });
-  }, [data, searchQuery, kategorie, stavy, jenZdarma]);
+  }, [data, searchQuery, kategorie, stavy, stavyZbozi, jenZdarma]);
 
   const toggle = (set: string[], item: string, fn: (s: string[]) => void) => {
     if (set.includes(item)) fn(set.filter((x) => x !== item));
@@ -57,10 +82,11 @@ export function InzeratyListClient({ data }: Props) {
   const resetAll = useCallback(() => {
     setKategorie([]);
     setStavy([]);
+    setStavyZbozi([]);
     setJenZdarma(false);
   }, []);
 
-  const activeChipCount = kategorie.length + stavy.length + (jenZdarma ? 1 : 0);
+  const activeChipCount = kategorie.length + stavy.length + stavyZbozi.length + (jenZdarma ? 1 : 0);
   const hasActiveFilters = activeChipCount > 0;
 
   // Detekce kdy filter row scrolluje ze zorného pole (přímý scroll listener — spolehlivější než IO)
@@ -82,26 +108,41 @@ export function InzeratyListClient({ data }: Props) {
     };
   }, []);
 
-  // Registrace CompactFilterBar do header slotu, vždy když chips scrollují pryč (bez ohledu na aktivní filtry)
+  // CompactFilterBar je v header slotu vždy (i když ho user nevidí). Visible prop
+  // řídí pouze opacity — LiquidGlass instance zůstává mountnutá od mountu stránky,
+  // takže když chips zmizí ze zorného pole, pilulka se objeví bez "snap into existence"
+  // efektu. Animace header pillu (wide ↔ narrow) běží jen na page-level transition
+  // (mount/unmount stránky), ne na scroll.
   useEffect(() => {
-    if (chipsInView) {
-      setHeaderSlot(null);
-      return;
-    }
     setHeaderSlot(
       <CompactFilterBar
         kategorie={kategorie}
         setKategorie={setKategorie}
         stavy={stavy}
         setStavy={setStavy}
+        stavyZbozi={stavyZbozi}
+        setStavyZbozi={setStavyZbozi}
         jenZdarma={jenZdarma}
         setJenZdarma={setJenZdarma}
         allKategorie={allKategorie}
         allStavy={allStavy}
+        allStavyZbozi={allStavyZbozi}
         resetAll={resetAll}
+        visible={!chipsInView}
       />,
     );
-  }, [chipsInView, kategorie, stavy, jenZdarma, allKategorie, allStavy, resetAll, setHeaderSlot]);
+  }, [
+    chipsInView,
+    kategorie,
+    stavy,
+    stavyZbozi,
+    jenZdarma,
+    allKategorie,
+    allStavy,
+    allStavyZbozi,
+    resetAll,
+    setHeaderSlot,
+  ]);
 
   // Cleanup při unmountu (např. navigace pryč ze stránky)
   useEffect(() => () => setHeaderSlot(null), [setHeaderSlot]);
@@ -136,6 +177,21 @@ export function InzeratyListClient({ data }: Props) {
                       value={s}
                       checked={stavy.includes(s)}
                       onToggle={() => toggle(stavy, s, setStavy)}
+                    />
+                  </div>
+                ))}
+              </Stack>
+            </FilterChip>
+
+            <FilterChip label="Stav zboží" activeCount={stavyZbozi.length}>
+              <Stack gap={0}>
+                {allStavyZbozi.map((s, i) => (
+                  <div key={s}>
+                    {i > 0 && <ReactiveSeparator />}
+                    <ReactiveCheckOption
+                      value={s}
+                      checked={stavyZbozi.includes(s)}
+                      onToggle={() => toggle(stavyZbozi, s, setStavyZbozi)}
                     />
                   </div>
                 ))}
@@ -217,6 +273,7 @@ export function InzeratyListClient({ data }: Props) {
                 foto={inzerat.foto}
                 kategorie={inzerat.kategorie}
                 stav={inzerat.stav}
+                stavZbozi={inzerat.stavZbozi}
                 cena={inzerat.cena}
                 free={inzerat.free}
               />
