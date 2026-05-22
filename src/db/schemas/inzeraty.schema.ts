@@ -12,4 +12,5 @@ export const inzeraty = sqliteTable("inzeraty", {
   free: integer({ mode: "boolean" }).notNull(),
   qrPlatba: integer({ mode: "boolean" }).notNull().default(false),
   telefon: text(),
+  stavZbozi: text(),
 });

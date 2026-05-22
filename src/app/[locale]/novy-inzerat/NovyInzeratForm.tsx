@@ -35,6 +35,7 @@ import { vytvorInzerat } from "./actions";
 
 const KATEGORIE = ["Elektronika", "Oblečení", "Nábytek", "Sport", "Knihy", "Auto-moto", "Jiné"];
 const STAVY = ["dostupné", "rezervováno", "prodáno"];
+const STAVY_ZBOZI = ["nové", "jako nové", "použité", "opotřebované", "poškozené"];
 
 type FotoItem = {
   id: string;
@@ -143,7 +144,13 @@ export default function NovyInzeratForm() {
       try {
         const res = await fetch(`/api/upload-session/${uploadSessionKey}`, { cache: "no-store" });
         if (!res.ok) return;
-        const data = (await res.json()) as { fotky: { webPath: string; filename: string }[] };
+        const data = (await res.json()) as {
+          fotky: { webPath: string; filename: string }[];
+          mobileConnected?: boolean;
+        };
+        if (data.mobileConnected) {
+          setPhoneModalOpen(false);
+        }
         const novinky = data.fotky.filter((f) => !seenRemoteRef.current.has(f.webPath));
         if (novinky.length > 0) {
           for (const n of novinky) seenRemoteRef.current.add(n.webPath);
@@ -162,7 +169,7 @@ export default function NovyInzeratForm() {
     };
     const interval = setInterval(() => {
       if (!stopped) tick();
-    }, 2000);
+    }, 1000);
     tick();
     return () => {
       stopped = true;
@@ -178,6 +185,7 @@ export default function NovyInzeratForm() {
       kontakt: "",
       telefon: "",
       stav: "dostupné",
+      stavZbozi: "",
       cena: "" as number | string,
       free: false,
       qrPlatba: false,
@@ -186,6 +194,7 @@ export default function NovyInzeratForm() {
       nazev: (v) => (v.trim().length < 3 ? "Název musí mít alespoň 3 znaky" : null),
       popis: (v) => (v.trim().length < 10 ? "Popis musí mít alespoň 10 znaků" : null),
       kategorie: (v) => (!v ? "Vyberte kategorii" : null),
+      stavZbozi: (v) => (!v ? "Vyberte stav zboží" : null),
       kontakt: (v, values) => {
         const email = v.trim();
         const tel = values.telefon.trim();
@@ -359,6 +368,13 @@ export default function NovyInzeratForm() {
                 />
                 <GlassSelect label="Stav" data={STAVY} {...form.getInputProps("stav")} />
               </Group>
+
+              <GlassSelect
+                label="Stav zboží"
+                placeholder="Jak je na tom?"
+                data={STAVY_ZBOZI}
+                {...form.getInputProps("stavZbozi")}
+              />
             </Stack>
           </Paper>
 
@@ -408,6 +424,7 @@ export default function NovyInzeratForm() {
             bottom: 0,
             marginTop: 24,
             padding: "12px 0",
+            zIndex: 1000,
           }}
         >
           <Group justify="flex-end">

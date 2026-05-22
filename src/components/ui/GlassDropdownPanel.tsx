@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Square, SquareCheck } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LiquidGlass } from "@/components/layout/LiquidGlass";
@@ -36,6 +36,22 @@ export function GlassDropdownPanel({ triggerRef, open, onClose, estimatedHeight,
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setMounted(true), []);
+
+  // Inicializace rect i bez otevření — panel se vykreslí jako "studený" off-screen
+  // (opacity 0, pointer-events: none) hned jak je trigger v DOMu. LiquidGlass tím
+  // dostane šanci spočítat SVG displacement mapu ještě před tím, než user klikne,
+  // takže první otevření je okamžité (žádný "snap into existence" efekt).
+  useEffect(() => {
+    if (!mounted || rect) return;
+    const init = () => {
+      if (!triggerRef.current) return;
+      const r = triggerRef.current.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) setRect(r);
+    };
+    init();
+    const id = window.requestAnimationFrame(init);
+    return () => window.cancelAnimationFrame(id);
+  }, [mounted, rect, triggerRef]);
 
   useEffect(() => {
     if (!open) return;
@@ -82,63 +98,62 @@ export function GlassDropdownPanel({ triggerRef, open, onClose, estimatedHeight,
 
   if (!mounted) return null;
 
+  // I bez rect mountujeme LiquidGlass off-screen, aby měl čas vygenerovat
+  // displacement mapu a dekódovat feImage ještě před prvním otevřením.
+  const positionStyle: React.CSSProperties = rect
+    ? {
+        ...(placement === "down" ? { top: rect.bottom + offset } : { bottom: window.innerHeight - rect.top + offset }),
+        left: rect.left,
+        minWidth: rect.width,
+      }
+    : { top: -9999, left: -9999 };
+
   return createPortal(
-    <AnimatePresence>
-      {open && rect && (
-        <motion.div
-          ref={dropdownRef}
-          custom={placement}
-          variants={{
-            closed: (p: Placement) => ({
-              opacity: 0,
-              scale: 0.9,
-              y: p === "down" ? -10 : 10,
-              transition: { duration: 0.14, ease: "easeOut" },
-            }),
-            open: {
-              opacity: 1,
-              scale: 1,
-              y: 0,
-              transition: { type: "spring", bounce: 0.45, duration: 0.55 },
-            },
-          }}
-          initial="closed"
-          animate="open"
-          exit="closed"
-          style={{
-            position: "fixed",
-            ...(placement === "down"
-              ? { top: rect.bottom + offset }
-              : { bottom: window.innerHeight - rect.top + offset }),
-            left: rect.left,
-            width: "max-content",
-            minWidth: rect.width,
-            zIndex: 1000,
-            transformOrigin: placement === "down" ? "top center" : "bottom center",
-          }}
-        >
-          <LiquidGlass
-            radius={14}
-            glassThickness={60}
-            bezelWidth={20}
-            refractiveIndex={1.5}
-            scaleRatio={0.7}
-            blur={1.0}
-            specularSaturation={4}
-            specularOpacity={0.6}
-            tintColor="0, 0, 0"
-            tintOpacity={0.08}
-            innerShadowBlur={15}
-            innerShadowSpread={-4}
-            outerShadowBlur={32}
-            fallbackBlur={20}
-            style={{ padding: 6 }}
-          >
-            {children}
-          </LiquidGlass>
-        </motion.div>
-      )}
-    </AnimatePresence>,
+    <motion.div
+      ref={dropdownRef}
+      variants={{
+        closed: {
+          opacity: 0,
+          scale: 0.97,
+          transition: { duration: 0.1, ease: "easeOut" },
+        },
+        open: {
+          opacity: 1,
+          scale: 1,
+          transition: { duration: 0.18, ease: [0.2, 0.7, 0.3, 1] },
+        },
+      }}
+      initial="closed"
+      animate={open && rect ? "open" : "closed"}
+      style={{
+        position: "fixed",
+        ...positionStyle,
+        width: "max-content",
+        zIndex: 1000,
+        transformOrigin: placement === "down" ? "top center" : "bottom center",
+        pointerEvents: open && rect ? "auto" : "none",
+      }}
+    >
+      <LiquidGlass
+        radius={14}
+        glassThickness={60}
+        bezelWidth={20}
+        refractiveIndex={1.5}
+        scaleRatio={0.7}
+        blur={1.0}
+        specularSaturation={4}
+        specularOpacity={0.6}
+        tintColor="0, 0, 0"
+        tintOpacity={0.08}
+        innerShadowBlur={15}
+        innerShadowSpread={-4}
+        outerShadowBlur={32}
+        fallbackBlur={20}
+        style={{ padding: 6 }}
+      >
+        {children}
+      </LiquidGlass>
+    </motion.div>,
     document.body,
   );
 }

@@ -7,7 +7,7 @@ import { CompactFilterBar } from "@/components/ui/CompactFilterBar";
 
 const noop = () => {};
 const STUB_KAT = ["a"];
-const STUB_STAV = ["b"];
+const STUB_STAV_ZB = ["x"];
 
 type IdleWindow = Window & {
   requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
@@ -36,25 +36,22 @@ function scheduleIdle(fn: () => void) {
 export function LiquidGlassPrewarm() {
   const [stage, setStage] = useState(0);
   const STAGES = 4;
-  const TEARDOWN_DELAY_MS = 1500;
 
   useEffect(() => {
-    if (stage < STAGES) {
-      let cancelled = false;
-      scheduleIdle(() => {
-        if (!cancelled) setStage((s) => s + 1);
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-    // Všechny varianty mountnuté → počkáme až Image.decode() doběhne pro všechny,
-    // pak teardown. Cache je modulová, takže unmount neuvolní mapy.
-    const id = window.setTimeout(() => setStage((s) => s + 1), TEARDOWN_DELAY_MS);
-    return () => window.clearTimeout(id);
+    if (stage >= STAGES) return;
+    let cancelled = false;
+    scheduleIdle(() => {
+      if (!cancelled) setStage((s) => s + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [stage]);
 
-  if (stage > STAGES) return null;
+  // Žádný teardown — všechny varianty zůstávají v DOM offscreen po celou dobu
+  // života aplikace. To drží browser image cache (decoded feImage data URLs)
+  // permanentně warm → reálné instance LiquidGlass se objevují bez "snap" efektu
+  // i když dorazí dlouho po prewarmu. Paměťová stopa je zanedbatelná.
 
   return (
     <div
@@ -68,31 +65,37 @@ export function LiquidGlassPrewarm() {
         contain: "layout style paint",
       }}
     >
-      {/* CompactFilterBar — všechny filtry inactive (3 buttons, žádné count badge, žádný reset) */}
+      {/* CompactFilterBar — nic není aktivní (3 buttons, žádné count badge, žádný reset) */}
       {stage >= 1 && (
         <CompactFilterBar
           kategorie={[]}
           setKategorie={noop}
           stavy={[]}
           setStavy={noop}
+          stavyZbozi={[]}
+          setStavyZbozi={noop}
           jenZdarma={false}
           setJenZdarma={noop}
           allKategorie={STUB_KAT}
-          allStavy={STUB_STAV}
+          allStavy={STUB_STAV_ZB}
+          allStavyZbozi={STUB_STAV_ZB}
           resetAll={noop}
         />
       )}
-      {/* CompactFilterBar — jen zdarma aktivní (reset visible, žádné count badge) */}
+      {/* CompactFilterBar — zdarma aktivní (reset visible) */}
       {stage >= 2 && (
         <CompactFilterBar
           kategorie={[]}
           setKategorie={noop}
           stavy={[]}
           setStavy={noop}
+          stavyZbozi={[]}
+          setStavyZbozi={noop}
           jenZdarma={true}
           setJenZdarma={noop}
           allKategorie={STUB_KAT}
-          allStavy={STUB_STAV}
+          allStavy={STUB_STAV_ZB}
+          allStavyZbozi={STUB_STAV_ZB}
           resetAll={noop}
         />
       )}
@@ -103,24 +106,30 @@ export function LiquidGlassPrewarm() {
           setKategorie={noop}
           stavy={[]}
           setStavy={noop}
+          stavyZbozi={[]}
+          setStavyZbozi={noop}
           jenZdarma={false}
           setJenZdarma={noop}
           allKategorie={STUB_KAT}
-          allStavy={STUB_STAV}
+          allStavy={STUB_STAV_ZB}
+          allStavyZbozi={STUB_STAV_ZB}
           resetAll={noop}
         />
       )}
-      {/* CompactFilterBar — kategorie + stav active (2 count badges + reset) */}
+      {/* CompactFilterBar — kategorie + stavZbozi active (2 count badges + reset) */}
       {stage >= 4 && (
         <CompactFilterBar
           kategorie={STUB_KAT}
           setKategorie={noop}
-          stavy={STUB_STAV}
+          stavy={[]}
           setStavy={noop}
+          stavyZbozi={STUB_STAV_ZB}
+          setStavyZbozi={noop}
           jenZdarma={false}
           setJenZdarma={noop}
           allKategorie={STUB_KAT}
-          allStavy={STUB_STAV}
+          allStavy={STUB_STAV_ZB}
+          allStavyZbozi={STUB_STAV_ZB}
           resetAll={noop}
         />
       )}
@@ -145,6 +154,34 @@ export function LiquidGlassPrewarm() {
         >
           <X size={14} color="white" />
         </LiquidGlass>
+      )}
+      {/* HeaderRightSlot (cenová pilulka na detailu inzerátu) — pár typických šířek,
+          aby se feImage decodovaly do browser image cache ještě před prvním použitím. */}
+      {stage >= 4 && (
+        <div style={{ display: "flex", gap: 8 }}>
+          {[200, 240, 280].map((w) => (
+            <LiquidGlass
+              key={w}
+              radius="pill"
+              glassThickness={80}
+              bezelWidth={60}
+              refractiveIndex={1.5}
+              scaleRatio={0.7}
+              blur={1.0}
+              specularSaturation={4}
+              specularOpacity={0.75}
+              tintColor="253, 126, 20"
+              tintOpacity={0.1}
+              innerShadowBlur={10}
+              innerShadowSpread={-4}
+              outerShadowBlur={28}
+              fallbackBlur={18}
+              style={{ width: w, height: 48 }}
+            >
+              <div style={{ width: w, height: 34 }} />
+            </LiquidGlass>
+          ))}
+        </div>
       )}
     </div>
   );

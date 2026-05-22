@@ -3,8 +3,7 @@
 import { ActionIcon, Burger, Divider, Drawer, Group, ScrollArea, Text, useMantineColorScheme } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { Home, Moon, Sun } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import { useRef } from "react";
+import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useFilterState } from "@/components/infrastructure/FilterStateProvider";
 import { LiquidGlass } from "@/components/layout/LiquidGlass";
 import { SearchBar } from "@/components/layout/SearchBar";
@@ -23,7 +22,6 @@ const SEARCH_ROUTES = ["/inzeraty"];
 
 export function HeaderSearch() {
   const [opened, { toggle, close }] = useDisclosure(false);
-  const headerRef = useRef<HTMLDivElement>(null);
   const { headerSlot, headerSlotRight } = useFilterState();
   const showSlot = headerSlot !== null;
   const showSlotRight = headerSlotRight !== null;
@@ -32,8 +30,6 @@ export function HeaderSearch() {
   const pathname = usePathname();
   const hideSearch = !SEARCH_ROUTES.includes(pathname);
 
-  // Odkazy v headeru — text napevno bílý. Dark-glass backdrop (brightness 0.85
-  // v LiquidGlass) zajistí čitelnost na libovolném pozadí bez dynamic luminance.
   const headerItems = links.map((link) => (
     <Link
       key={link.label}
@@ -55,7 +51,6 @@ export function HeaderSearch() {
     </Link>
   ));
 
-  // Odkazy v drawer mobilním menu — drawer má vlastní pozadí, takže text plain
   const drawerItems = links.map((link) => (
     <Link
       key={link.label}
@@ -76,8 +71,7 @@ export function HeaderSearch() {
 
   return (
     <>
-      {/* Gradient blur — nahoře blurry, dole ostré, končí těsně pod pilulkou.
-          Barva pozadí (0.2 opacity) se přirozeně vytrácí spolu s maskou. */}
+      {/* Gradient blur backdrop */}
       <div
         aria-hidden="true"
         style={{
@@ -96,160 +90,153 @@ export function HeaderSearch() {
         }}
       />
 
-      {/* Floating wrapper — flex container, centrovaný jako celek přes CSS (transform recomputuje při změně šířky) */}
-      <div
-        style={{
-          position: "fixed",
-          top: 16,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 1000,
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          maxWidth: "calc(100vw - 32px)",
-        }}
-      >
-        {/* Header slot (např. CompactFilterBar) — vlevo od headeru, AnimatePresence pro enter/exit */}
-        <AnimatePresence initial={false}>
-          {showSlot && (
-            <motion.div
-              key="slot"
-              layout="position"
-              // Symetricky opacity-only pro entry i exit. Důvod: backdrop-filter
-              // na slotu je drahý a každá změna scale/translate mění visible
-              // bounds → browser re-blur backdroupu každý frame animace.
-              // Když navíc uživatel zároveň scrolluje (typický spouštěč),
-              // backdrop se mění i sám od sebe. Opacity-only animace udržují
-              // konstantní bounds → GPU může cacheovat filtrovaný layer
-              // a per-frame zbývá jen levná alfa kompozice. Spring na opacitě
-              // dává jemný "settle" feel bez per-frame filter recomputu.
-              //
-              // Pozn.: žádný `will-change: opacity` ani `transform: translateZ(0)`
-              // tady NEsmí být. Kterýkoli z nich propaguje wrapper na vlastní
-              // compositing layer / stacking context → vnitřní LiquidGlass
-              // `backdrop-filter: url()` pak sampleluje tuhle prázdnou vrstvu
-              // místo pozadí stránky a refrakce zmizí (slot vypadá ploše).
-              // Browser si layer během animace vytvoří lazy sám; vstup/výstup
-              // se trigguje pouze přes scroll threshold, ne hot path.
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeOut" } }}
-              transition={SPRING}
-              style={{ flex: "0 0 auto" }}
-            >
-              {headerSlot}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Header pill — šířka se mění skokově (layout="position"), pozice se animuje přes transform.
-            Tím se backdrop-filter neaplikuje na resizující se element každý frame → výrazně levnější. */}
-        <motion.div
-          ref={headerRef}
-          layout="position"
-          transition={SPRING}
+      {/* Pills row — full-width, flex center. LayoutGroup koordinuje position animace
+          všech tří pilulí zároveň: hlavní pill se posune, vedlejší vyskočí/zmizí. */}
+      <LayoutGroup id="header-pills">
+        <div
           style={{
-            width: showAnySlot ? HEADER_WIDTH_NARROW : HEADER_WIDTH_NORMAL,
-            maxWidth: "100%",
-            flex: "0 1 auto",
+            position: "fixed",
+            top: 16,
+            left: 0,
+            right: 0,
+            zIndex: 1000,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 8,
+            padding: "0 16px",
+            pointerEvents: "none",
           }}
         >
-          <LiquidGlass
-            radius="pill"
-            glassThickness={80}
-            bezelWidth={60}
-            refractiveIndex={1.5}
-            scaleRatio={0.7}
-            blur={1.0}
-            specularSaturation={4}
-            specularOpacity={0.75}
-            tintColor="0, 0, 0"
-            tintOpacity={0.06}
-            innerShadowBlur={10}
-            innerShadowSpread={-4}
-            outerShadowBlur={28}
-            fallbackBlur={18}
-            style={{ padding: "8px 20px" }}
+          {/* Levý slot (CompactFilterBar na /inzeraty) */}
+          <AnimatePresence initial={false}>
+            {showSlot && (
+              <motion.div
+                key="slot"
+                layout="position"
+                // Opacity-only: backdrop-filter bounds se nemění → GPU cache zůstává.
+                // Pozn.: žádný will-change ani translateZ(0) — viz komentář na main pill.
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeOut" } }}
+                transition={SPRING}
+                style={{ flex: "0 0 auto", pointerEvents: "auto" }}
+              >
+                {headerSlot}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Hlavní header pill — šířka se mění skokově, pozice animuje přes transform.
+              Žádný will-change ani translateZ(0): propagovaly by element na vlastní
+              compositing layer → backdrop-filter uvnitř LiquidGlass by sampleloval
+              prázdnou vrstvu místo pozadí stránky. */}
+          <motion.div
+            layout="position"
+            transition={SPRING}
+            style={{
+              width: showAnySlot ? HEADER_WIDTH_NARROW : HEADER_WIDTH_NORMAL,
+              maxWidth: "100%",
+              flex: "0 1 auto",
+              pointerEvents: "auto",
+            }}
           >
-            <Group justify="space-between" align="center" wrap="nowrap">
-              {/* Levá část — logo */}
-              <Group gap="xs" style={{ flex: "0 0 auto" }}>
-                <ActionIcon
-                  component={Link}
-                  href="/"
-                  variant="subtle"
-                  size="lg"
-                  radius="xl"
-                  aria-label="Domů"
-                  style={{ color: "var(--mantine-color-text)" }}
-                >
-                  <Home size={20} />
-                </ActionIcon>
-                <Text
-                  fw={700}
-                  size="sm"
-                  visibleFrom="sm"
-                  style={{ whiteSpace: "nowrap", color: "var(--mantine-color-text)" }}
-                >
-                  Blogic Bazar
-                </Text>
-              </Group>
-
-              {/* Střed — search bar */}
-              {!hideSearch ? (
-                <Group justify="center" style={{ flex: 1, minWidth: 0, margin: "0 12px" }} visibleFrom="sm">
-                  <SearchBar />
-                </Group>
-              ) : (
-                <div style={{ flex: 1, minWidth: 0 }} />
-              )}
-
-              {/* Pravá část — navigace + přepínač tématu + burger */}
-              <Group gap={4} justify="flex-end" style={{ flex: "0 0 auto" }}>
-                <Group gap={0} visibleFrom="sm">
-                  {headerItems}
-                </Group>
-                <ActionIcon
-                  variant="subtle"
-                  size="lg"
-                  radius="xl"
-                  onClick={toggleColorScheme}
-                  aria-label="Přepnout barevné schéma"
-                  style={{ color: "var(--mantine-color-text)" }}
-                >
-                  {colorScheme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-                </ActionIcon>
-                <Burger
-                  opened={opened}
-                  onClick={toggle}
-                  size="sm"
-                  hiddenFrom="sm"
-                  aria-label="Otevřít menu"
-                  color="var(--mantine-color-text)"
-                />
-              </Group>
-            </Group>
-          </LiquidGlass>
-        </motion.div>
-
-        {/* Header slot vpravo (např. cena + rezervace na detail stránce) */}
-        <AnimatePresence initial={false}>
-          {showSlotRight && (
-            <motion.div
-              key="slot-right"
-              layout="position"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeOut" } }}
-              transition={SPRING}
-              style={{ flex: "0 0 auto" }}
+            <LiquidGlass
+              radius="pill"
+              glassThickness={80}
+              bezelWidth={60}
+              refractiveIndex={1.5}
+              scaleRatio={0.7}
+              blur={1.0}
+              specularSaturation={4}
+              specularOpacity={0.75}
+              tintColor="0, 0, 0"
+              tintOpacity={0.06}
+              innerShadowBlur={10}
+              innerShadowSpread={-4}
+              outerShadowBlur={28}
+              fallbackBlur={18}
+              style={{ padding: "8px 20px" }}
             >
-              {headerSlotRight}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+              <Group justify="space-between" align="center" wrap="nowrap">
+                {/* Levá část — logo */}
+                <Group gap="xs" style={{ flex: "0 0 auto" }}>
+                  <ActionIcon
+                    component={Link}
+                    href="/"
+                    variant="subtle"
+                    size="lg"
+                    radius="xl"
+                    aria-label="Domů"
+                    style={{ color: "var(--mantine-color-text)" }}
+                  >
+                    <Home size={20} />
+                  </ActionIcon>
+                  <Text
+                    fw={700}
+                    size="sm"
+                    visibleFrom="sm"
+                    style={{ whiteSpace: "nowrap", color: "var(--mantine-color-text)" }}
+                  >
+                    Blogic Bazar
+                  </Text>
+                </Group>
+
+                {/* Střed — search bar */}
+                {!hideSearch ? (
+                  <Group justify="center" style={{ flex: 1, minWidth: 0, margin: "0 12px" }} visibleFrom="sm">
+                    <SearchBar />
+                  </Group>
+                ) : (
+                  <div style={{ flex: 1, minWidth: 0 }} />
+                )}
+
+                {/* Pravá část — navigace + přepínač tématu + burger */}
+                <Group gap={4} justify="flex-end" style={{ flex: "0 0 auto" }}>
+                  <Group gap={0} visibleFrom="sm">
+                    {headerItems}
+                  </Group>
+                  <ActionIcon
+                    variant="subtle"
+                    size="lg"
+                    radius="xl"
+                    onClick={toggleColorScheme}
+                    aria-label="Přepnout barevné schéma"
+                    style={{ color: "var(--mantine-color-text)" }}
+                  >
+                    {colorScheme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+                  </ActionIcon>
+                  <Burger
+                    opened={opened}
+                    onClick={toggle}
+                    size="sm"
+                    hiddenFrom="sm"
+                    aria-label="Otevřít menu"
+                    color="var(--mantine-color-text)"
+                  />
+                </Group>
+              </Group>
+            </LiquidGlass>
+          </motion.div>
+
+          {/* Pravý slot (cena + rezervace na detail stránce) */}
+          <AnimatePresence initial={false}>
+            {showSlotRight && (
+              <motion.div
+                key="slot-right"
+                layout="position"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeOut" } }}
+                transition={SPRING}
+                style={{ flex: "0 0 auto", pointerEvents: "auto" }}
+              >
+                {headerSlotRight}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </LayoutGroup>
 
       {/* Mobilní menu */}
       <Drawer
