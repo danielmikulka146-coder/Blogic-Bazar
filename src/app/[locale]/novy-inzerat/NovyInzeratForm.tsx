@@ -24,10 +24,11 @@ import {
 } from "@mantine/core";
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
 import { useForm } from "@mantine/form";
-import { Check, Copy, ImageIcon, Smartphone, Upload, X } from "lucide-react";
+import { Check, Copy, ImageIcon, LogIn, Smartphone, Upload, X } from "lucide-react";
 import { useLocale } from "next-intl";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/components/infrastructure/AuthProvider";
 import { LiquidGlass } from "@/components/layout/LiquidGlass";
 import { GlassSelect } from "@/components/ui/GlassSelect";
 import { useRouter } from "@/i18n/navigation";
@@ -99,6 +100,7 @@ function SortableThumbnail({ item, onRemove, isFirst }: { item: FotoItem; onRemo
 export default function NovyInzeratForm() {
   const router = useRouter();
   const locale = useLocale();
+  const { user, loading: authLoading } = useAuth();
   const [fotky, setFotky] = useState<FotoItem[]>([]);
   const fotkyRef = useRef(fotky);
   fotkyRef.current = fotky;
@@ -143,7 +145,16 @@ export default function NovyInzeratForm() {
     };
   }, [locale]);
 
+  // Snapshot mobileConnected v okamžiku otevření modalu — díky tomu při druhém
+  // otevření (kdy server stále drží mobileConnected: true z předchozí session)
+  // modal hned nezavřeme. Zavřeme jen na reálný přechod false → true od momentu,
+  // co user modal otevřel. Hodnota `null` znamená "ještě nezachyceno".
+  const initialMobileConnectedRef = useRef<boolean | null>(null);
+  const phoneModalOpenRef = useRef(phoneModalOpen);
+  phoneModalOpenRef.current = phoneModalOpen;
+
   const openPhoneUpload = useCallback(() => {
+    initialMobileConnectedRef.current = null;
     setPhoneModalOpen(true);
   }, []);
 
@@ -159,9 +170,21 @@ export default function NovyInzeratForm() {
           fotky: { webPath: string; filename: string }[];
           mobileConnected?: boolean;
         };
-        if (data.mobileConnected) {
-          setPhoneModalOpen(false);
+
+        // Zavřít modal jen na reálný přechod do mobileConnected od posledního
+        // otevření. Při prvním pollu si zapamatujeme baseline. Pokud byl mobil
+        // už předtím připojený (sticky stav), modal zůstane otevřený a user
+        // může znovu naskenovat QR.
+        if (phoneModalOpenRef.current) {
+          const connected = data.mobileConnected ?? false;
+          if (initialMobileConnectedRef.current === null) {
+            initialMobileConnectedRef.current = connected;
+          } else if (connected && !initialMobileConnectedRef.current) {
+            setPhoneModalOpen(false);
+            initialMobileConnectedRef.current = true;
+          }
         }
+
         const novinky = data.fotky.filter((f) => !seenRemoteRef.current.has(f.webPath));
         if (novinky.length > 0) {
           for (const n of novinky) seenRemoteRef.current.add(n.webPath);
@@ -173,6 +196,11 @@ export default function NovyInzeratForm() {
               remotePath: n.webPath,
             })),
           ]);
+          // Backup uzávěr — nová fotka je definitivní signál, že user už nepotřebuje QR.
+          // Pokrývá situaci, kdy byl mobileConnected: true sticky před otevřením modalu.
+          if (phoneModalOpenRef.current) {
+            setPhoneModalOpen(false);
+          }
         }
       } catch {
         /* ignoruj přechodné chyby */
@@ -193,7 +221,7 @@ export default function NovyInzeratForm() {
       nazev: "",
       popis: "",
       kategorie: "",
-      kontakt: "",
+      kontakt: user?.email ?? "",
       telefon: "",
       stav: "dostupné",
       stavZbozi: "",
@@ -284,6 +312,48 @@ export default function NovyInzeratForm() {
     }
     await vytvorInzerat(formData);
     router.push("/inzeraty");
+  }
+
+  // Auto-fill e-mailu z Google účtu — pokud user kontakt nezměnil, držíme ho
+  // synchronizovaný s aktuálně přihlášeným účtem (např. po loginu během vyplňování).
+  // Pozor: useForm vrací nový objekt na každém renderu, takže v deps array smí být
+  // jen user?.email — jinak useEffect běží v nekonečné smyčce (setFieldValue → render
+  // → nový form ref → useEffect zase fire → ...).
+  const lastAutofilledEmail = useRef<string>("");
+  const formRef = useRef(form);
+  formRef.current = form;
+  useEffect(() => {
+    const email = user?.email;
+    if (!email) return;
+    const f = formRef.current;
+    const current = f.values.kontakt;
+    if (current === "" || current === lastAutofilledEmail.current) {
+      f.setFieldValue("kontakt", email);
+      lastAutofilledEmail.current = email;
+    }
+  }, [user?.email]);
+
+  // Když auth doběhl a user není přihlášený, ukážeme login prompt místo formuláře.
+  // Během auth loadingu (~ desítky ms) zobrazíme formulář optimisticky — pro
+  // přihlášené je to bez záblesku, nepřihlášený krátce vidí formulář a pak
+  // přepneme na prompt. Submit je gated v handleSubmit přes user check.
+  if (!user && !authLoading) {
+    return (
+      <Box maw={520} mx="auto" pt={48}>
+        <Paper p="xl" radius="md" withBorder>
+          <Stack gap="md" align="center" ta="center">
+            <LogIn size={36} color="var(--mantine-color-orange-5)" />
+            <Title order={3} c="var(--mantine-color-text)">
+              Přihlas se pro přidání inzerátu
+            </Title>
+            <Text c="dimmed" size="sm">
+              Inzeráty na Blogic Bazaru může vytvářet pouze přihlášený uživatel. Použij tlačítko „Přihlásit" v pravém
+              horním rohu — přihlášení proběhne přes tvůj Google účet.
+            </Text>
+          </Stack>
+        </Paper>
+      </Box>
+    );
   }
 
   return (
@@ -414,13 +484,39 @@ export default function NovyInzeratForm() {
           {/* KONTAKT */}
           <Paper p="md" radius="md" withBorder>
             <Stack gap="md">
-              <Text fw={500} size="sm">
-                Kontakt{" "}
-                <Text span c="dimmed" size="xs">
-                  (stačí jedno)
+              <Group justify="space-between" align="center" wrap="nowrap">
+                <Text fw={500} size="sm">
+                  Kontakt{" "}
+                  <Text span c="dimmed" size="xs">
+                    (stačí jedno)
+                  </Text>
                 </Text>
-              </Text>
-              <TextInput label="E-mail" placeholder="vas@email.cz" type="email" {...form.getInputProps("kontakt")} />
+                {(() => {
+                  const email = user?.email;
+                  if (!email || email === form.values.kontakt) return null;
+                  return (
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      onClick={() => {
+                        form.setFieldValue("kontakt", email);
+                        lastAutofilledEmail.current = email;
+                      }}
+                    >
+                      Použít e-mail z Google ({email})
+                    </Button>
+                  );
+                })()}
+              </Group>
+              <TextInput
+                label="E-mail"
+                placeholder="vas@email.cz"
+                type="email"
+                description={
+                  form.values.kontakt === user?.email ? "Předvyplněno z tvého Google účtu. Můžeš změnit." : undefined
+                }
+                {...form.getInputProps("kontakt")}
+              />
               <TextInput label="Telefon" placeholder="+420 123 456 789" type="tel" {...form.getInputProps("telefon")} />
             </Stack>
           </Paper>

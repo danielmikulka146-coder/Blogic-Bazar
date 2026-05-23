@@ -1,5 +1,7 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
+import { users } from "./users.schema";
+
 export const inzeraty = sqliteTable("inzeraty", {
   id: integer().primaryKey({ autoIncrement: true }),
   nazev: text().notNull(),
@@ -13,4 +15,5 @@ export const inzeraty = sqliteTable("inzeraty", {
   qrPlatba: integer({ mode: "boolean" }).notNull().default(false),
   telefon: text(),
   stavZbozi: text(),
+  userId: integer().references(() => users.id, { onDelete: "set null" }),
 });

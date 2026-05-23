@@ -5,10 +5,13 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { inzeraty } from "@/db/schemas";
+import { requireUser } from "@/lib/auth";
 import { imageToWebp, toWebpFilename } from "@/lib/serverImageProcess";
 import { dropSessionDir } from "@/lib/uploadSession";
 
 export async function vytvorInzerat(formData: FormData) {
+  const user = await requireUser();
+
   const nazev = formData.get("nazev") as string;
   const popis = formData.get("popis") as string;
   const kategorie = formData.get("kategorie") as string;
@@ -25,7 +28,20 @@ export async function vytvorInzerat(formData: FormData) {
 
   const [{ id }] = await db
     .insert(inzeraty)
-    .values({ nazev, popis, kategorie, kontakt, telefon, stav, stavZbozi, cena, free, qrPlatba, foto: "[]" })
+    .values({
+      nazev,
+      popis,
+      kategorie,
+      kontakt,
+      telefon,
+      stav,
+      stavZbozi,
+      cena,
+      free,
+      qrPlatba,
+      foto: "[]",
+      userId: user.id,
+    })
     .returning({ id: inzeraty.id });
 
   const platneFiles = files.filter((f) => f.size > 0);

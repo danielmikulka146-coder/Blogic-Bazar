@@ -4,6 +4,7 @@
 import { Badge, Card, Text, Title } from "@mantine/core";
 import Image from "next/image";
 import { useRef, useState } from "react";
+import { SaveButton } from "@/components/ui/SaveButton";
 import { Link } from "@/i18n/navigation";
 import { hlavniFotka } from "@/lib/foto";
 
@@ -67,6 +68,9 @@ export function InzeratCard({ id, nazev, foto, kategorie, stav, stavZbozi, cena,
         }}
       >
         <Image src={hlavniFotka(foto)} alt={nazev} fill style={{ objectFit: "cover" }} />
+        <div style={{ position: "absolute", top: 14, right: 14, zIndex: 2 }}>
+          <SaveButton inzeratId={id} variant="icon" />
+        </div>
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, gap: 6 }}>
