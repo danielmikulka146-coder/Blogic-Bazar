@@ -3,9 +3,11 @@
 import { environmentManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { type ReactNode, useEffect } from "react";
+import { AuthProvider } from "@/components/infrastructure/AuthProvider";
 import { FilterStateProvider } from "@/components/infrastructure/FilterStateProvider";
 import { LiquidGlassPrewarm } from "@/components/infrastructure/LiquidGlassPrewarm";
 import { MaintenanceModal } from "@/components/infrastructure/MaintenanceModal";
+import { SavedInzeratyProvider } from "@/components/infrastructure/SavedInzeratyProvider";
 import { type LiquidGlassPrewarmConfig, prewarmLiquidGlass } from "@/components/layout/LiquidGlass";
 
 // Hardcoded prewarm — jen pro komponenty s přesně známou velikostí (header pill).
@@ -49,9 +51,13 @@ export function Providers({ children }: ProvidersProps) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <FilterStateProvider>
-        <MaintenanceModal>{children}</MaintenanceModal>
-      </FilterStateProvider>
+      <AuthProvider>
+        <SavedInzeratyProvider>
+          <FilterStateProvider>
+            <MaintenanceModal>{children}</MaintenanceModal>
+          </FilterStateProvider>
+        </SavedInzeratyProvider>
+      </AuthProvider>
       <LiquidGlassPrewarm />
       <ReactQueryDevtools />
     </QueryClientProvider>

@@ -1,11 +1,15 @@
 "use client";
 
 import { Badge, Grid, Group, Modal, Stack, Text, Title } from "@mantine/core";
+import { Edit3, Phone } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { useFilterState } from "@/components/infrastructure/FilterStateProvider";
+import { Avatar } from "@/components/layout/AuthPill";
 import { LiquidGlass } from "@/components/layout/LiquidGlass";
+import { SaveButton } from "@/components/ui/SaveButton";
+import { Link } from "@/i18n/navigation";
 import { rezervujInzerat } from "./actions";
 import { FotoGalerie } from "./FotoGalerie";
 
@@ -19,7 +23,28 @@ type InzeratData = {
   cena: number | null;
   free: boolean;
   qrPlatba: boolean;
+  telefon: string | null;
+  stavZbozi: string | null;
 };
+
+type Owner = { name: string; picture: string | null };
+
+function stavZboziColor(stavZbozi: string): string {
+  switch (stavZbozi) {
+    case "nové":
+      return "teal";
+    case "jako nové":
+      return "cyan";
+    case "použité":
+      return "grape";
+    case "opotřebované":
+      return "orange";
+    case "poškozené":
+      return "red";
+    default:
+      return "gray";
+  }
+}
 
 const QR_ACCOUNT = "CZ6508000000192000145399";
 const QR_VS = "00000";
@@ -254,7 +279,17 @@ function HeaderRightSlot({
   );
 }
 
-export function InzeratDetailClient({ inzerat, fotky }: { inzerat: InzeratData; fotky: string[] }) {
+export function InzeratDetailClient({
+  inzerat,
+  fotky,
+  owner,
+  isOwner,
+}: {
+  inzerat: InzeratData;
+  fotky: string[];
+  owner: Owner | null;
+  isOwner: boolean;
+}) {
   const [stav, setStav] = useState(inzerat.stav);
   const [pending, setPending] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -325,10 +360,17 @@ export function InzeratDetailClient({ inzerat, fotky }: { inzerat: InzeratData; 
         <Grid.Col span={{ base: 12, sm: 3 }}>
           <div ref={actionRef}>
             <Stack gap="md">
-              <Group justify="space-between" align="center">
-                <Badge color="blue" variant="light">
-                  {inzerat.kategorie}
-                </Badge>
+              <Group justify="space-between" align="center" wrap="wrap">
+                <Group gap={6} wrap="wrap">
+                  <Badge color="blue" variant="light">
+                    {inzerat.kategorie}
+                  </Badge>
+                  {inzerat.stavZbozi && (
+                    <Badge color={stavZboziColor(inzerat.stavZbozi)} variant="light">
+                      {inzerat.stavZbozi}
+                    </Badge>
+                  )}
+                </Group>
                 <Badge color={stavColor(stav)} variant="light">
                   {stav}
                 </Badge>
@@ -342,17 +384,67 @@ export function InzeratDetailClient({ inzerat, fotky }: { inzerat: InzeratData; 
                 {cenaText}
               </Text>
 
+              <Group gap={8} wrap="wrap">
+                <SaveButton inzeratId={inzerat.id} variant="wide" />
+                {isOwner && (
+                  <Link
+                    href={`/inzeraty/${inzerat.id}/upravit`}
+                    style={{ textDecoration: "none", display: "inline-flex" }}
+                  >
+                    <Group
+                      gap={6}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 12,
+                        background: "rgba(100, 180, 255, 0.18)",
+                        border: "1px solid rgba(100, 180, 255, 0.4)",
+                        color: "var(--mantine-color-text)",
+                        fontSize: 13,
+                        fontWeight: 600,
+                      }}
+                    >
+                      <Edit3 size={14} />
+                      <span>Upravit</span>
+                    </Group>
+                  </Link>
+                )}
+              </Group>
+
               {stav === "dostupné" && <RezervujButton onClick={handleRezervovat} pending={pending} />}
 
               {canShowQr && <ZobrazitQrButton onClick={() => setQrOpen(true)} />}
+
+              {owner && (
+                <Stack gap={6}>
+                  <Text c="dimmed" size="xs" tt="uppercase" fw={600}>
+                    Inzerent
+                  </Text>
+                  <Group gap={10} wrap="nowrap">
+                    <Avatar src={owner.picture} name={owner.name} size={36} />
+                    <Text c="var(--mantine-color-text)" size="sm" fw={600} style={{ minWidth: 0 }} truncate>
+                      {owner.name}
+                    </Text>
+                  </Group>
+                </Stack>
+              )}
 
               <Stack gap={4}>
                 <Text c="dimmed" size="xs" tt="uppercase" fw={600}>
                   Kontakt
                 </Text>
-                <Text c="var(--mantine-color-text)" size="sm">
-                  {inzerat.kontakt}
-                </Text>
+                {inzerat.kontakt && (
+                  <Text c="var(--mantine-color-text)" size="sm" style={{ wordBreak: "break-all" }}>
+                    {inzerat.kontakt}
+                  </Text>
+                )}
+                {inzerat.telefon && (
+                  <Group gap={4} wrap="nowrap" align="center">
+                    <Phone size={12} style={{ flexShrink: 0, color: "var(--mantine-color-dimmed)" }} />
+                    <Text c="var(--mantine-color-text)" size="sm">
+                      {inzerat.telefon}
+                    </Text>
+                  </Group>
+                )}
               </Stack>
             </Stack>
           </div>

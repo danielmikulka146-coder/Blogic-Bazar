@@ -4,15 +4,15 @@ import { ActionIcon, Burger, Divider, Drawer, Group, ScrollArea, Text, useMantin
 import { useDisclosure } from "@mantine/hooks";
 import { Home, Moon, Sun } from "lucide-react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { useAuth } from "@/components/infrastructure/AuthProvider";
 import { useFilterState } from "@/components/infrastructure/FilterStateProvider";
+import { AuthMobileMenu, AuthPill } from "@/components/layout/AuthPill";
 import { LiquidGlass } from "@/components/layout/LiquidGlass";
 import { SearchBar } from "@/components/layout/SearchBar";
 import { Link, usePathname } from "@/i18n/navigation";
 
-const links = [
-  { link: "/inzeraty", label: "Inzeráty" },
-  { link: "/novy-inzerat", label: "Přidat inzerát" },
-];
+const PUBLIC_LINKS = [{ link: "/inzeraty", label: "Inzeráty" }] as const;
+const AUTHED_LINKS = [{ link: "/novy-inzerat", label: "Přidat inzerát" }] as const;
 
 const HEADER_WIDTH_NORMAL = 720;
 const HEADER_WIDTH_NARROW = 560;
@@ -30,8 +30,11 @@ export function HeaderSearch() {
   // hlavní pilulka zůstává centrovaná.
   const showAnySlot = (showSlot && headerSlotActive) || (showSlotRight && headerSlotRightActive);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
+  const { user } = useAuth();
   const pathname = usePathname();
   const hideSearch = !SEARCH_ROUTES.includes(pathname);
+
+  const links = user ? [...PUBLIC_LINKS, ...AUTHED_LINKS] : [...PUBLIC_LINKS];
 
   const headerItems = links.map((link) => (
     <Link
@@ -194,7 +197,7 @@ export function HeaderSearch() {
                   <div style={{ flex: 1, minWidth: 0 }} />
                 )}
 
-                {/* Pravá část — navigace + přepínač tématu + burger */}
+                {/* Pravá část — navigace + přepínač tématu + auth pill + burger */}
                 <Group gap={4} justify="flex-end" style={{ flex: "0 0 auto" }}>
                   <Group gap={0} visibleFrom="sm">
                     {headerItems}
@@ -209,6 +212,9 @@ export function HeaderSearch() {
                   >
                     {colorScheme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
                   </ActionIcon>
+                  <div style={{ marginLeft: 4 }} className="auth-pill-desktop">
+                    <AuthPill />
+                  </div>
                   <Burger
                     opened={opened}
                     onClick={toggle}
@@ -261,6 +267,8 @@ export function HeaderSearch() {
             </>
           )}
           {drawerItems}
+          <Divider my="sm" />
+          <AuthMobileMenu onNavigate={close} />
         </ScrollArea>
       </Drawer>
     </>
