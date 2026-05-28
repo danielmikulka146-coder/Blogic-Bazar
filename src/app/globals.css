@@ -8,18 +8,153 @@
 
 @import "tailwindcss/utilities.css" layer(utilities);
 
-/* Adaptive CSS variables for glass surfaces — switch with Mantine color scheme */
+/* Halftone retro print palette — single light theme. */
 :root,
-[data-mantine-color-scheme="light"] {
-  --glass-hover-bg: rgba(0, 0, 0, 0.07);
-  --glass-active-bg: rgba(0, 0, 0, 0.12);
-  --glass-separator: rgba(0, 0, 0, 0.09);
-  --glass-badge-bg: rgba(0, 0, 0, 0.09);
+[data-mantine-color-scheme="light"],
+[data-mantine-color-scheme="dark"] {
+  --halftone-cream: #f4efe3;
+  --halftone-card: #fbfaf6;
+  --halftone-ink: #1a1a1a;
+  --halftone-ink-soft: #444441;
+  --halftone-orange: #ff5722;
+  --halftone-orange-dark: #4a1b0c;
+  --halftone-status-available: #3b6d11;
+  --halftone-status-reserved: #854f0b;
+  --halftone-status-sold: #6b6b6b;
+
+  --mantine-color-body: var(--halftone-cream);
 }
 
-[data-mantine-color-scheme="dark"] {
-  --glass-hover-bg: rgba(255, 255, 255, 0.1);
-  --glass-active-bg: rgba(255, 255, 255, 0.18);
-  --glass-separator: rgba(255, 255, 255, 0.12);
-  --glass-badge-bg: rgba(255, 255, 255, 0.22);
+[data-mantine-color-scheme="light"] .mantine-Card-root,
+[data-mantine-color-scheme="dark"] .mantine-Card-root {
+  background: var(--halftone-card);
+}
+
+body {
+  background: var(--halftone-cream);
+  color: var(--halftone-ink);
+  font-family: var(--font-jb-mono), "Courier New", ui-monospace, monospace;
+}
+
+/* DriftingDots base — pointer-events off, behind everything */
+.drifting-dots-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.drifting-dot {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+}
+
+@keyframes drift-1 {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(12px, -10px);
+  }
+}
+@keyframes drift-2 {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-14px, 8px);
+  }
+}
+@keyframes drift-3 {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(10px, 14px);
+  }
+}
+@keyframes drift-4 {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-11px, -13px);
+  }
+}
+@keyframes drift-5 {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(16px, 6px);
+  }
+}
+@keyframes drift-6 {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-8px, 16px);
+  }
+}
+
+/* Orange glow on hover for Mantine Button — applies globally. */
+.mantine-Button-root {
+  transition:
+    box-shadow 150ms ease-out,
+    background-color 150ms ease-out,
+    color 150ms ease-out;
+}
+.mantine-Button-root:hover {
+  box-shadow: 0 0 16px rgba(255, 87, 34, 0.4);
+}
+
+/* Halftone Select — input + dropdown + options sjednoceny s filter chips. */
+.mantine-Select-input,
+.mantine-InputBase-input.mantine-Select-input {
+  background: var(--halftone-card);
+  border: 2px dotted var(--halftone-ink);
+  border-radius: 0;
+  color: var(--halftone-ink);
+  font-family: var(--font-jb-mono), "Courier New", ui-monospace, monospace;
+}
+.mantine-Combobox-dropdown,
+.mantine-Select-dropdown {
+  background: var(--halftone-card);
+  border: 2px solid var(--halftone-ink);
+  border-radius: 0;
+  padding: 0;
+}
+.mantine-Select-option,
+.mantine-Combobox-option {
+  border-radius: 0;
+  font-family: var(--font-jb-mono), "Courier New", ui-monospace, monospace;
+  color: var(--halftone-ink);
+}
+.mantine-Select-option[data-combobox-active],
+.mantine-Select-option[data-combobox-selected],
+.mantine-Select-option[data-combobox-active="true"],
+.mantine-Select-option:hover,
+.mantine-Combobox-option[data-combobox-active],
+.mantine-Combobox-option[data-combobox-selected],
+.mantine-Combobox-option[data-combobox-active="true"],
+.mantine-Combobox-option:hover {
+  background: var(--halftone-cream);
+  border-radius: 0;
+}
+
+.scroll-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scroll-hidden::-webkit-scrollbar {
+  display: none;
 }

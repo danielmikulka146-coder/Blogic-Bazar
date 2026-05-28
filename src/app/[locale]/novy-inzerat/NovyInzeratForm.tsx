@@ -7,7 +7,6 @@ import {
   ActionIcon,
   Badge,
   Box,
-  Button,
   Checkbox,
   CopyButton,
   Group,
@@ -16,34 +15,79 @@ import {
   NumberInput,
   Paper,
   ScrollArea,
+  Select,
   Stack,
   Text,
   Textarea,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
 import { useForm } from "@mantine/form";
-import { Check, Copy, ImageIcon, LogIn, Smartphone, Upload, X } from "lucide-react";
+import { Check, Copy, ImageIcon, LogIn, Smartphone, Trash2, Upload, X } from "lucide-react";
 import { useLocale } from "next-intl";
 import QRCode from "qrcode";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/infrastructure/AuthProvider";
-import { LiquidGlass } from "@/components/layout/LiquidGlass";
-import { GlassSelect } from "@/components/ui/GlassSelect";
+import { PhoneInput } from "@/components/ui/PhoneInput";
 import { useRouter } from "@/i18n/navigation";
 import { resizeImageIfLarger } from "@/lib/clientImageResize";
-import { vytvorInzerat } from "./actions";
+import { defaultPhoneCountry, formatPhoneDigits } from "@/lib/phoneCountries";
+import { odstranitInzerat } from "../inzeraty/owner-actions";
+import { upravitInzerat, vytvorInzerat } from "./actions";
 
 const KATEGORIE = ["Elektronika", "Oblečení", "Nábytek", "Sport", "Knihy", "Auto-moto", "Jiné"];
 const STAVY_ZBOZI = ["nové", "jako nové", "použité", "opotřebované", "poškozené"];
+const STAVY = ["dostupné", "zarezervováno", "prodáno"];
+
+const INK = "#1a1a1a";
+const CARD = "#FBFAF6";
+const ORANGE = "#FF5722";
+const BURNT = "#4A1B0C";
+const MUTED = "#888780";
+const MONO_STACK = "var(--font-jb-mono), 'Courier New', ui-monospace, monospace";
+
+export type InitialInzerat = {
+  id: number;
+  nazev: string;
+  popis: string;
+  kategorie: string;
+  kontakt: string;
+  telefon: string | null;
+  stav: string;
+  stavZbozi: string | null;
+  cena: number;
+  free: boolean;
+};
+
+type Props = {
+  /** Pokud je předán, formulář běží v edit režimu (předvyplní pole, jiný submit). */
+  initialInzerat?: InitialInzerat;
+  /** Web cesty (např. `/inzeraty/5/abc.webp`) k fotkám, které již existují na disku. */
+  initialFotky?: string[];
+};
 
 type FotoItem = {
   id: string;
   url: string;
   file?: File;
   remotePath?: string;
+  /** Cesta v `/public/inzeraty/{id}` u fotek načtených z DB v edit režimu. */
+  existingPath?: string;
 };
+
+/** Rozdělí uložené tel. číslo "+420 123 456 789" na prefix a vlastní číslo. */
+function splitStoredTelefon(stored: string | null | undefined): { prefix: string; number: string } {
+  if (!stored) return { prefix: "", number: "" };
+  const trimmed = stored.trim();
+  if (trimmed.startsWith("+")) {
+    const spaceIdx = trimmed.indexOf(" ");
+    if (spaceIdx > 0) {
+      return { prefix: trimmed.slice(0, spaceIdx), number: trimmed.slice(spaceIdx + 1) };
+    }
+    return { prefix: trimmed, number: "" };
+  }
+  return { prefix: "", number: trimmed };
+}
 
 function SortableThumbnail({ item, onRemove, isFirst }: { item: FotoItem; onRemove: () => void; isFirst: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -62,14 +106,15 @@ function SortableThumbnail({ item, onRemove, isFirst }: { item: FotoItem; onRemo
         height: 120,
         flexShrink: 0,
         cursor: isDragging ? "grabbing" : "grab",
-        borderRadius: 8,
+        borderRadius: 0,
         overflow: "hidden",
-        border: isFirst ? "2px solid var(--mantine-color-blue-5)" : "1px solid var(--mantine-color-dark-4)",
-        background: "var(--mantine-color-dark-6)",
+        border: isFirst ? `2px solid ${ORANGE}` : `2px dotted ${INK}`,
+        background: CARD,
       }}
       {...attributes}
       {...listeners}
     >
+      {/* biome-ignore lint/performance/noImgElement: dnd-kit drag needs raw <img>; object URLs aren't friendly to next/image */}
       <img
         src={item.url}
         alt=""
@@ -77,18 +122,37 @@ function SortableThumbnail({ item, onRemove, isFirst }: { item: FotoItem; onRemo
         style={{ width: "100%", height: "100%", objectFit: "cover", userSelect: "none" }}
       />
       {isFirst && (
-        <Badge size="xs" variant="filled" color="blue" style={{ position: "absolute", top: 6, left: 6 }}>
+        <Badge
+          size="xs"
+          variant="filled"
+          style={{
+            position: "absolute",
+            top: 6,
+            left: 6,
+            background: ORANGE,
+            color: BURNT,
+            borderRadius: 0,
+            fontFamily: MONO_STACK,
+            letterSpacing: "0.06em",
+          }}
+        >
           Hlavní
         </Badge>
       )}
       <ActionIcon
         size="sm"
-        color="red"
         variant="filled"
-        radius="xl"
+        radius={0}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={onRemove}
-        style={{ position: "absolute", top: 6, right: 6 }}
+        style={{
+          position: "absolute",
+          top: 6,
+          right: 6,
+          background: INK,
+          color: CARD,
+          borderRadius: 0,
+        }}
         aria-label="Odebrat foto"
       >
         <X size={14} />
@@ -97,11 +161,63 @@ function SortableThumbnail({ item, onRemove, isFirst }: { item: FotoItem; onRemo
   );
 }
 
-export default function NovyInzeratForm() {
+/** Section header — centrovaný titulek mezi dotted linkami přes plnou šířku. */
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        marginTop: 4,
+        marginBottom: 8,
+        width: "100%",
+        fontFamily: MONO_STACK,
+        fontSize: 11,
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        color: INK,
+      }}
+    >
+      <span aria-hidden style={{ flex: 1, height: 0, borderTop: `2px dotted ${MUTED}` }} />
+      <span style={{ color: INK, fontWeight: 700, whiteSpace: "nowrap" }}>{title}</span>
+      <span aria-hidden style={{ flex: 1, height: 0, borderTop: `2px dotted ${MUTED}` }} />
+    </div>
+  );
+}
+
+const FIELD_LABEL_PROPS: Record<string, unknown> = {
+  fw: 700,
+  c: INK,
+  size: "xs",
+  tt: "uppercase",
+  style: { letterSpacing: "0.08em", fontFamily: MONO_STACK },
+};
+
+const INPUT_FIELD_STYLES = {
+  input: {
+    background: CARD,
+    border: `2px dotted ${INK}`,
+    borderRadius: 0,
+    fontFamily: MONO_STACK,
+    color: INK,
+  },
+} as const;
+
+export default function NovyInzeratForm({ initialInzerat, initialFotky }: Props = {}) {
   const router = useRouter();
   const locale = useLocale();
   const { user, loading: authLoading } = useAuth();
-  const [fotky, setFotky] = useState<FotoItem[]>([]);
+  const isEdit = initialInzerat != null;
+  const initialTelefon = useMemo(() => splitStoredTelefon(initialInzerat?.telefon), [initialInzerat?.telefon]);
+
+  const [fotky, setFotky] = useState<FotoItem[]>(() =>
+    (initialFotky ?? []).map((p, i) => ({
+      id: `existing-${i}-${p}`,
+      url: p,
+      existingPath: p,
+    })),
+  );
   const fotkyRef = useRef(fotky);
   fotkyRef.current = fotky;
 
@@ -109,11 +225,16 @@ export default function NovyInzeratForm() {
   const [uploadSessionKey, setUploadSessionKey] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [uploadUrl, setUploadUrl] = useState<string | null>(null);
+  const uploadSessionKeyRef = useRef<string | null>(null);
   const seenRemoteRef = useRef<Set<string>>(new Set());
+  uploadSessionKeyRef.current = uploadSessionKey;
+
+  // Smazat inzerát (jen v edit režimu)
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  // úklid object URLs při unmountu
   useEffect(() => {
     return () => {
       for (const f of fotkyRef.current) {
@@ -122,8 +243,10 @@ export default function NovyInzeratForm() {
     };
   }, []);
 
-  // Předgenerování QR na pozadí hned po mountu
+  // QR pro nahrání z telefonu
   useEffect(() => {
+    if (!user) return;
+
     let cancelled = false;
     (async () => {
       try {
@@ -137,18 +260,14 @@ export default function NovyInzeratForm() {
         setUploadUrl(url);
         setQrDataUrl(qr);
       } catch {
-        /* tiché selhání — QR se zobrazí jako spinner */
+        /* tiché selhání */
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [locale]);
+  }, [locale, user]);
 
-  // Snapshot mobileConnected v okamžiku otevření modalu — díky tomu při druhém
-  // otevření (kdy server stále drží mobileConnected: true z předchozí session)
-  // modal hned nezavřeme. Zavřeme jen na reálný přechod false → true od momentu,
-  // co user modal otevřel. Hodnota `null` znamená "ještě nezachyceno".
   const initialMobileConnectedRef = useRef<boolean | null>(null);
   const phoneModalOpenRef = useRef(phoneModalOpen);
   phoneModalOpenRef.current = phoneModalOpen;
@@ -158,7 +277,6 @@ export default function NovyInzeratForm() {
     setPhoneModalOpen(true);
   }, []);
 
-  // Polling — když je modal otevřený nebo session existuje, pravidelně se ptá serveru
   useEffect(() => {
     if (!uploadSessionKey) return;
     let stopped = false;
@@ -171,10 +289,6 @@ export default function NovyInzeratForm() {
           mobileConnected?: boolean;
         };
 
-        // Zavřít modal jen na reálný přechod do mobileConnected od posledního
-        // otevření. Při prvním pollu si zapamatujeme baseline. Pokud byl mobil
-        // už předtím připojený (sticky stav), modal zůstane otevřený a user
-        // může znovu naskenovat QR.
         if (phoneModalOpenRef.current) {
           const connected = data.mobileConnected ?? false;
           if (initialMobileConnectedRef.current === null) {
@@ -196,14 +310,12 @@ export default function NovyInzeratForm() {
               remotePath: n.webPath,
             })),
           ]);
-          // Backup uzávěr — nová fotka je definitivní signál, že user už nepotřebuje QR.
-          // Pokrývá situaci, kdy byl mobileConnected: true sticky před otevřením modalu.
           if (phoneModalOpenRef.current) {
             setPhoneModalOpen(false);
           }
         }
       } catch {
-        /* ignoruj přechodné chyby */
+        /* ignoruj */
       }
     };
     const interval = setInterval(() => {
@@ -216,18 +328,20 @@ export default function NovyInzeratForm() {
     };
   }, [uploadSessionKey]);
 
+  const defaultCountry = useMemo(() => defaultPhoneCountry(locale), [locale]);
+
   const form = useForm({
     initialValues: {
-      nazev: "",
-      popis: "",
-      kategorie: "",
-      kontakt: user?.email ?? "",
-      telefon: "",
-      stav: "dostupné",
-      stavZbozi: "",
-      cena: "" as number | string,
-      free: false,
-      qrPlatba: false,
+      nazev: initialInzerat?.nazev ?? "",
+      popis: initialInzerat?.popis ?? "",
+      kategorie: initialInzerat?.kategorie ?? "",
+      kontakt: initialInzerat?.kontakt ?? user?.email ?? "",
+      telefon: initialTelefon.number ? formatPhoneDigits(initialTelefon.number) : "",
+      telefonPrefix: initialTelefon.prefix || defaultCountry.prefix,
+      stav: initialInzerat?.stav ?? "dostupné",
+      stavZbozi: initialInzerat?.stavZbozi ?? "",
+      cena: (initialInzerat?.cena ?? "") as number | string,
+      free: initialInzerat?.free ?? false,
     },
     validate: {
       nazev: (v) => (v.trim().length < 3 ? "Název musí mít alespoň 3 znaky" : null),
@@ -273,9 +387,9 @@ export default function NovyInzeratForm() {
     setFotky((prev) => {
       const target = prev.find((f) => f.id === id);
       if (target?.file) URL.revokeObjectURL(target.url);
+      // Pro session upload: smaž ji rovnou ze session, aby nezůstávala na disku.
+      // Pro existující fotku: jen odeber ze stavu — server ji při save smaže.
       if (target?.remotePath && uploadSessionKey) {
-        // Necháváme path v seenRemoteRef, aby se polling fotku znovu nevrátil.
-        // Server se uklidí, aby ji telefon viděl jako smazanou.
         const filename = target.remotePath.split("/").pop();
         if (filename) {
           fetch(`/api/upload-session/${uploadSessionKey}/foto/${filename}`, { method: "DELETE" }).catch(() => {});
@@ -295,34 +409,138 @@ export default function NovyInzeratForm() {
     });
   }
 
+  // Flag který vypne beforeunload warning, jakmile uživatel cíleně odešle formulář
+  // (jinak by se objevila otázka i při následném router.push).
+  const submittingRef = useRef(false);
+  const suppressBeforeUnloadRef = useRef(false);
+
+  // V edit režimu počáteční stav fotky = existující. Tyto neoznačujeme jako
+  // "rozpracovaný draft" — varování při zavírání chceme jen když user něco změnil.
+  const initialFotkyKeyRef = useRef(JSON.stringify((initialFotky ?? []).map((p) => `existing:${p}`)));
+
+  const currentFotkySignature = useCallback(() => {
+    return JSON.stringify(
+      fotkyRef.current.map((f) => {
+        if (f.existingPath) return `existing:${f.existingPath}`;
+        if (f.file) return `file:${f.id}`;
+        if (f.remotePath) return `remote:${f.remotePath}`;
+        return "?";
+      }),
+    );
+  }, []);
+
+  const hasUnsavedDraft = useCallback(() => {
+    const fotkyChanged = currentFotkySignature() !== initialFotkyKeyRef.current;
+    return formRef.current.isDirty() || fotkyChanged;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFotkySignature]);
+
+  const closePhoneUploadSession = useCallback(() => {
+    const key = uploadSessionKeyRef.current;
+    if (!key) return;
+    fetch(`/api/upload-session/${key}/close`, { method: "POST", keepalive: true }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (!submittingRef.current) {
+        closePhoneUploadSession();
+      }
+    };
+  }, [closePhoneUploadSession]);
+
+  useEffect(() => {
+    const handler = () => {
+      if (!submittingRef.current) {
+        closePhoneUploadSession();
+      }
+    };
+    window.addEventListener("pagehide", handler);
+    return () => window.removeEventListener("pagehide", handler);
+  }, [closePhoneUploadSession]);
+
+  useEffect(() => {
+    const leaveMessage = isEdit
+      ? "Máš neuložené změny. Opravdu chceš odejít?"
+      : "Máš rozepsaný inzerát. Opravdu chceš odejít?";
+    const handler = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || submittingRef.current || !hasUnsavedDraft()) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+      const target = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!(target instanceof HTMLAnchorElement)) return;
+      if (target.target && target.target !== "_self") return;
+
+      const url = new URL(target.href, window.location.href);
+      if (url.origin !== window.location.origin || url.href === window.location.href) return;
+
+      event.preventDefault();
+      if (!window.confirm(leaveMessage)) return;
+
+      suppressBeforeUnloadRef.current = true;
+      closePhoneUploadSession();
+      window.location.assign(url.href);
+    };
+
+    document.addEventListener("click", handler, true);
+    return () => document.removeEventListener("click", handler, true);
+  }, [closePhoneUploadSession, hasUnsavedDraft, isEdit]);
+
   async function handleSubmit(values: typeof form.values) {
+    submittingRef.current = true;
     const formData = new FormData();
     for (const [key, val] of Object.entries(values)) {
       formData.append(key, String(val));
     }
+
+    // Pošli pořadí fotek + soubory v tom samém pořadí, ve kterém se objevují
+    // v `fotky[]`. Server pak z `fotoEntry` zpětně poskládá pořadí kombinací
+    // s `foto` (File queue) a kontrolou existencí.
     for (const item of fotky) {
-      if (item.file) {
+      if (item.existingPath) {
+        formData.append("fotoEntry", `existing:${item.existingPath}`);
+      } else if (item.file) {
+        formData.append("fotoEntry", "file");
         formData.append("foto", item.file);
       } else if (item.remotePath) {
-        formData.append("remoteFoto", item.remotePath);
+        formData.append("fotoEntry", `session:${item.remotePath}`);
       }
     }
     if (uploadSessionKey) {
       formData.append("uploadSessionKey", uploadSessionKey);
     }
-    await vytvorInzerat(formData);
-    router.push("/inzeraty");
+
+    if (isEdit && initialInzerat) {
+      formData.append("id", String(initialInzerat.id));
+      await upravitInzerat(formData);
+      router.push(`/inzeraty/${initialInzerat.id}`);
+    } else {
+      await vytvorInzerat(formData);
+      router.push("/inzeraty");
+    }
   }
 
-  // Auto-fill e-mailu z Google účtu — pokud user kontakt nezměnil, držíme ho
-  // synchronizovaný s aktuálně přihlášeným účtem (např. po loginu během vyplňování).
-  // Pozor: useForm vrací nový objekt na každém renderu, takže v deps array smí být
-  // jen user?.email — jinak useEffect běží v nekonečné smyčce (setFieldValue → render
-  // → nový form ref → useEffect zase fire → ...).
+  const handleFormSubmit = form.onSubmit(handleSubmit);
+
+  async function handleDelete() {
+    if (!initialInzerat) return;
+    setDeleting(true);
+    try {
+      submittingRef.current = true;
+      await odstranitInzerat(initialInzerat.id);
+      router.push("/profil/moje-inzeraty");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  // Auto-fill e-mailu z Google účtu (jen v create režimu — v editu se prefilluje
+  // z existujícího inzerátu a uživatelův e-mail bychom přepsali kontakt z inzerátu).
   const lastAutofilledEmail = useRef<string>("");
   const formRef = useRef(form);
   formRef.current = form;
   useEffect(() => {
+    if (isEdit) return;
     const email = user?.email;
     if (!email) return;
     const f = formRef.current;
@@ -331,22 +549,52 @@ export default function NovyInzeratForm() {
       f.setFieldValue("kontakt", email);
       lastAutofilledEmail.current = email;
     }
-  }, [user?.email]);
+  }, [user?.email, isEdit]);
 
-  // Když auth doběhl a user není přihlášený, ukážeme login prompt místo formuláře.
-  // Během auth loadingu (~ desítky ms) zobrazíme formulář optimisticky — pro
-  // přihlášené je to bez záblesku, nepřihlášený krátce vidí formulář a pak
-  // přepneme na prompt. Submit je gated v handleSubmit přes user check.
+  // Browser warning při zavření tabu/refreshi pokud uživatel rozepsal formulář
+  // nebo nahrál fotky.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (submittingRef.current || suppressBeforeUnloadRef.current) return;
+      if (!hasUnsavedDraft()) return;
+      e.preventDefault();
+      // Chrome / starší prohlížeče potřebují returnValue, novější ignorují string.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasUnsavedDraft]);
+
+  // Auto-fill telefonu z uloženého profilu (jen v create režimu).
+  const autofilledTelefonRef = useRef(false);
+  useEffect(() => {
+    if (isEdit) return;
+    if (autofilledTelefonRef.current) return;
+    if (!user) return;
+    const f = formRef.current;
+    if (f.values.telefon.trim().length > 0) {
+      autofilledTelefonRef.current = true;
+      return;
+    }
+    if (user.telefon) {
+      f.setFieldValue("telefon", formatPhoneDigits(user.telefon));
+    }
+    if (user.telefonPrefix) {
+      f.setFieldValue("telefonPrefix", user.telefonPrefix);
+    }
+    autofilledTelefonRef.current = true;
+  }, [user, isEdit]);
+
   if (!user && !authLoading) {
     return (
       <Box maw={520} mx="auto" pt={48}>
-        <Paper p="xl" radius="md" withBorder>
+        <Paper p="xl" radius={0} withBorder style={{ borderColor: INK, borderWidth: 2, borderStyle: "dotted" }}>
           <Stack gap="md" align="center" ta="center">
-            <LogIn size={36} color="var(--mantine-color-orange-5)" />
-            <Title order={3} c="var(--mantine-color-text)">
-              Přihlas se pro přidání inzerátu
-            </Title>
-            <Text c="dimmed" size="sm">
+            <LogIn size={36} color={ORANGE} />
+            <Text fw={700} c={INK} size="lg" style={{ fontFamily: MONO_STACK }}>
+              Přihlas se pro {isEdit ? "úpravu inzerátu" : "přidání inzerátu"}
+            </Text>
+            <Text c={MUTED} size="sm" style={{ fontFamily: MONO_STACK }}>
               Inzeráty na Blogic Bazaru může vytvářet pouze přihlášený uživatel. Použij tlačítko „Přihlásit" v pravém
               horním rohu — přihlášení proběhne přes tvůj Google účet.
             </Text>
@@ -357,50 +605,153 @@ export default function NovyInzeratForm() {
   }
 
   return (
-    <Box maw={680} mx="auto" pb={96}>
-      <Title order={2} c="var(--mantine-color-text)" mb="lg">
-        Nový inzerát
-      </Title>
+    <Box maw={640} mx="auto" pb={96}>
+      <div>
+        <Group justify="space-between" align="center" mb={16} wrap="nowrap">
+          <h1
+            style={{
+              fontFamily: MONO_STACK,
+              fontWeight: 700,
+              fontSize: 28,
+              color: INK,
+              margin: 0,
+              letterSpacing: "-0.01em",
+            }}
+          >
+            {isEdit ? "Upravit inzerát" : "Nový inzerát"}
+          </h1>
+          {isEdit && !confirmDelete && (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 10px",
+                background: "transparent",
+                border: `2px solid ${INK}`,
+                borderRadius: 0,
+                cursor: "pointer",
+                color: ORANGE,
+                fontFamily: MONO_STACK,
+                fontSize: 11,
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              <Trash2 size={13} /> Smazat
+            </button>
+          )}
+          {isEdit && confirmDelete && (
+            <Group gap={6} wrap="nowrap">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                style={{
+                  padding: "6px 10px",
+                  background: CARD,
+                  border: `2px solid ${INK}`,
+                  borderRadius: 0,
+                  cursor: "pointer",
+                  color: INK,
+                  fontFamily: MONO_STACK,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                style={{
+                  padding: "6px 10px",
+                  background: ORANGE,
+                  color: BURNT,
+                  border: `2px solid ${INK}`,
+                  borderRadius: 0,
+                  cursor: deleting ? "wait" : "pointer",
+                  fontFamily: MONO_STACK,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {deleting ? "Mažu…" : "Opravdu smazat"}
+              </button>
+            </Group>
+          )}
+        </Group>
 
-      <form onSubmit={form.onSubmit(handleSubmit)}>
-        <Stack gap="lg">
-          {/* FOTKY */}
-          <Paper p="md" radius="md" withBorder>
+        <form onSubmit={handleFormSubmit} noValidate>
+          <Stack gap="md">
+            {/* FOTKY */}
+            <SectionHeader title="FOTKY" />
             <Stack gap="sm">
               <Group justify="space-between" align="center">
-                <Text fw={500}>Fotky</Text>
-                <Group gap="xs">
-                  {fotky.length > 0 && (
-                    <Text size="xs" c="dimmed" visibleFrom="sm">
-                      Přetažením změníte pořadí · první fotka je hlavní
-                    </Text>
-                  )}
-                  <Button size="xs" variant="light" leftSection={<Smartphone size={14} />} onClick={openPhoneUpload}>
-                    Nahrát z telefonu
-                  </Button>
-                </Group>
+                {fotky.length > 0 ? (
+                  <Text size="xs" c={MUTED} visibleFrom="sm" style={{ fontFamily: MONO_STACK }}>
+                    Přetažením změníte pořadí · první fotka je hlavní
+                  </Text>
+                ) : (
+                  <span />
+                )}
+                <button
+                  type="button"
+                  onClick={openPhoneUpload}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 12px",
+                    background: "transparent",
+                    border: `2px solid ${INK}`,
+                    borderRadius: 0,
+                    cursor: "pointer",
+                    fontFamily: MONO_STACK,
+                    fontSize: 12,
+                    color: ORANGE,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    fontWeight: 700,
+                  }}
+                >
+                  <Smartphone size={14} /> Nahrát z telefonu
+                </button>
               </Group>
 
               <Dropzone
                 accept={IMAGE_MIME_TYPE}
                 onDrop={pridejFotky}
-                styles={{ root: { borderStyle: "dashed", background: "transparent" } }}
+                styles={{
+                  root: {
+                    border: `2px dotted ${INK}`,
+                    borderRadius: 0,
+                    background: CARD,
+                  },
+                }}
               >
                 <Group justify="center" gap="md" mih={90} style={{ pointerEvents: "none" }}>
                   <Dropzone.Accept>
-                    <Upload size={32} />
+                    <Upload size={28} />
                   </Dropzone.Accept>
                   <Dropzone.Reject>
-                    <X size={32} />
+                    <X size={28} />
                   </Dropzone.Reject>
                   <Dropzone.Idle>
-                    <ImageIcon size={32} />
+                    <ImageIcon size={28} color={MUTED} />
                   </Dropzone.Idle>
                   <Stack gap={2} align="center">
-                    <Text size="sm" fw={500}>
+                    <Text size="sm" fw={600} style={{ fontFamily: MONO_STACK, color: INK }}>
                       Přetáhněte obrázky sem nebo klikněte
                     </Text>
-                    <Text size="xs" c="dimmed">
+                    <Text size="xs" c={MUTED} style={{ fontFamily: MONO_STACK }}>
                       PNG · JPEG · WEBP · GIF
                     </Text>
                   </Stack>
@@ -426,68 +777,96 @@ export default function NovyInzeratForm() {
                 </DndContext>
               )}
             </Stack>
-          </Paper>
 
-          {/* ZÁKLAD */}
-          <Paper p="md" radius="md" withBorder>
+            {/* O VĚCI */}
+            <SectionHeader title="O VĚCI" />
             <Stack gap="md">
-              <TextInput label="Název" placeholder="Co prodáváte?" {...form.getInputProps("nazev")} />
+              <TextInput
+                label="Název"
+                labelProps={FIELD_LABEL_PROPS}
+                placeholder="Co prodáváte?"
+                styles={INPUT_FIELD_STYLES}
+                {...form.getInputProps("nazev")}
+              />
 
               <Textarea
                 label="Popis"
+                labelProps={FIELD_LABEL_PROPS}
                 placeholder="Popis zboží, stav, rok výroby…"
                 minRows={4}
                 autosize
+                styles={INPUT_FIELD_STYLES}
                 {...form.getInputProps("popis")}
               />
 
-              <GlassSelect
+              <Select
                 label="Kategorie"
+                labelProps={FIELD_LABEL_PROPS}
                 placeholder="Vyberte"
                 data={KATEGORIE}
                 {...form.getInputProps("kategorie")}
               />
 
-              <GlassSelect
+              <Select
                 label="Stav zboží"
+                labelProps={FIELD_LABEL_PROPS}
                 placeholder="Jak je na tom?"
                 data={STAVY_ZBOZI}
                 {...form.getInputProps("stavZbozi")}
               />
-            </Stack>
-          </Paper>
 
-          {/* CENA */}
-          <Paper p="md" radius="md" withBorder>
+              {isEdit && (
+                <Select
+                  label="Stav inzerátu"
+                  labelProps={FIELD_LABEL_PROPS}
+                  data={STAVY}
+                  {...form.getInputProps("stav")}
+                />
+              )}
+            </Stack>
+
+            {/* CENA */}
+            <SectionHeader title="CENA" />
             <Stack gap="md">
-              <Checkbox label="Zdarma" {...form.getInputProps("free", { type: "checkbox" })} />
-              {!form.values.free && (
-                <NumberInput
-                  label="Cena"
-                  placeholder="0"
-                  min={0}
-                  suffix=" Kč"
-                  thousandSeparator=" "
-                  {...form.getInputProps("cena")}
-                />
-              )}
-              {!form.values.free && (
-                <Checkbox
-                  label="QR platba"
-                  description="V detailu inzerátu se zobrazí QR kód pro rychlou platbu"
-                  {...form.getInputProps("qrPlatba", { type: "checkbox" })}
-                />
-              )}
+              <Checkbox
+                label="Zdarma"
+                color={ORANGE}
+                radius={0}
+                styles={{
+                  input: {
+                    borderRadius: 0,
+                    border: `2px solid ${INK}`,
+                  },
+                  label: { fontFamily: MONO_STACK, fontSize: 13, color: INK, fontWeight: 600 },
+                }}
+                {...form.getInputProps("free", { type: "checkbox" })}
+              />
+              <NumberInput
+                label="Cena"
+                labelProps={FIELD_LABEL_PROPS}
+                placeholder="0"
+                min={0}
+                suffix=" Kč"
+                thousandSeparator=" "
+                disabled={form.values.free}
+                styles={{
+                  ...INPUT_FIELD_STYLES,
+                  input: {
+                    ...INPUT_FIELD_STYLES.input,
+                    opacity: form.values.free ? 0.4 : 1,
+                  },
+                }}
+                {...form.getInputProps("cena")}
+              />
             </Stack>
-          </Paper>
 
-          {/* KONTAKT */}
-          <Paper p="md" radius="md" withBorder>
+            {/* KONTAKT */}
+            <SectionHeader title="KONTAKT" />
             <Stack gap="md">
               <Group justify="space-between" align="center" wrap="nowrap">
-                <Text fw={500} size="sm">
+                <Text fw={600} size="sm" style={{ fontFamily: MONO_STACK, color: INK }}>
                   Kontakt{" "}
-                  <Text span c="dimmed" size="xs">
+                  <Text span c={MUTED} size="xs" style={{ fontFamily: MONO_STACK }}>
                     (stačí jedno)
                   </Text>
                 </Text>
@@ -495,73 +874,80 @@ export default function NovyInzeratForm() {
                   const email = user?.email;
                   if (!email || email === form.values.kontakt) return null;
                   return (
-                    <Button
-                      size="xs"
-                      variant="subtle"
+                    <button
+                      type="button"
                       onClick={() => {
                         form.setFieldValue("kontakt", email);
                         lastAutofilledEmail.current = email;
                       }}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: ORANGE,
+                        fontFamily: MONO_STACK,
+                        fontSize: 11,
+                        cursor: "pointer",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                        textDecoration: "underline",
+                      }}
                     >
-                      Použít e-mail z Google ({email})
-                    </Button>
+                      Použít e-mail z Google
+                    </button>
                   );
                 })()}
               </Group>
               <TextInput
                 label="E-mail"
+                labelProps={FIELD_LABEL_PROPS}
                 placeholder="vas@email.cz"
                 type="email"
-                description={
-                  form.values.kontakt === user?.email ? "Předvyplněno z tvého Google účtu. Můžeš změnit." : undefined
-                }
+                styles={INPUT_FIELD_STYLES}
                 {...form.getInputProps("kontakt")}
               />
-              <TextInput label="Telefon" placeholder="+420 123 456 789" type="tel" {...form.getInputProps("telefon")} />
+              <Stack gap={4}>
+                <Text {...(FIELD_LABEL_PROPS as Record<string, unknown>)}>Telefon</Text>
+                <PhoneInput
+                  prefix={form.values.telefonPrefix}
+                  value={form.values.telefon}
+                  defaultCountryCode={defaultCountry.code}
+                  onPrefixChange={(p) => form.setFieldValue("telefonPrefix", p)}
+                  onValueChange={(v) => form.setFieldValue("telefon", v)}
+                  error={form.errors.telefon as string | undefined}
+                />
+              </Stack>
             </Stack>
-          </Paper>
-        </Stack>
 
-        {/* STICKY SUBMIT */}
-        <Box
-          style={{
-            position: "sticky",
-            bottom: 0,
-            marginTop: 24,
-            padding: "12px 0",
-            zIndex: 1000,
-          }}
-        >
-          <Group justify="flex-end">
-            <button
-              type="submit"
-              style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "block" }}
-            >
-              <LiquidGlass
-                radius={12}
-                glassThickness={60}
-                bezelWidth={20}
-                refractiveIndex={1.5}
-                scaleRatio={0.7}
-                blur={1.0}
-                specularSaturation={4}
-                specularOpacity={0.7}
-                tintColor="253, 126, 20"
-                tintOpacity={0.22}
-                innerShadowBlur={10}
-                innerShadowSpread={-3}
-                outerShadowBlur={20}
-                fallbackBlur={16}
-                style={{ padding: "10px 24px" }}
+            <Group justify="flex-end" mt="md">
+              <button
+                type="submit"
+                style={{
+                  background: ORANGE,
+                  color: BURNT,
+                  border: `2px solid ${INK}`,
+                  borderRadius: 0,
+                  padding: "12px 20px",
+                  fontFamily: MONO_STACK,
+                  fontWeight: 500,
+                  fontSize: 14,
+                  cursor: "pointer",
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  transition: "box-shadow 150ms ease-out",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = "0 0 16px rgba(255, 87, 34, 0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = "none";
+                }}
               >
-                <Text fw={600} c="var(--mantine-color-text)" size="sm" style={{ whiteSpace: "nowrap" }}>
-                  Přidat inzerát
-                </Text>
-              </LiquidGlass>
-            </button>
-          </Group>
-        </Box>
-      </form>
+                {isEdit ? "Uložit změny" : "Přidat inzerát"}
+              </button>
+            </Group>
+          </Stack>
+        </form>
+      </div>
 
       <Modal
         opened={phoneModalOpen}
@@ -569,46 +955,43 @@ export default function NovyInzeratForm() {
         title="Nahrát z telefonu"
         centered
         size="sm"
+        radius={0}
       >
         <Stack gap="md" align="center">
-          <Text size="sm" c="dimmed" ta="center">
+          <Text size="sm" c={MUTED} ta="center" style={{ fontFamily: MONO_STACK }}>
             Naskenuj QR kód telefonem. Otevře se stránka, kde můžeš vyfotit nebo vybrat fotky — objeví se zde
             automaticky.
           </Text>
 
           {qrDataUrl ? (
-            <Box
-              style={{
-                background: "white",
-                padding: 12,
-                borderRadius: 12,
-                lineHeight: 0,
-              }}
-            >
-              {/** biome-ignore lint/performance/noImgElement: data: URL pro QR; next/image to nepodporuje */}
+            <Box style={{ background: "white", padding: 12, border: `2px solid ${INK}`, lineHeight: 0 }}>
+              {/** biome-ignore lint/performance/noImgElement: data: URL pro QR */}
               <img src={qrDataUrl} alt="QR kód pro nahrávání" width={256} height={256} />
             </Box>
           ) : (
             <Group gap="xs">
               <Loader size="sm" />
-              <Text size="sm">Generuji QR kód…</Text>
+              <Text size="sm" style={{ fontFamily: MONO_STACK }}>
+                Generuji QR kód…
+              </Text>
             </Group>
           )}
 
           {uploadUrl && (
             <Stack gap={4} w="100%">
-              <Text size="xs" c="dimmed">
+              <Text size="xs" c={MUTED} style={{ fontFamily: MONO_STACK }}>
                 Nebo otevři odkaz ručně:
               </Text>
               <Group gap="xs" wrap="nowrap">
-                <TextInput value={uploadUrl} readOnly style={{ flex: 1 }} size="xs" />
+                <TextInput value={uploadUrl} readOnly style={{ flex: 1 }} size="xs" styles={INPUT_FIELD_STYLES} />
                 <CopyButton value={uploadUrl}>
                   {({ copied, copy }) => (
                     <ActionIcon
                       variant="light"
-                      color={copied ? "green" : "blue"}
+                      color={copied ? "green" : "orange"}
                       onClick={copy}
                       aria-label="Zkopírovat odkaz"
+                      radius={0}
                     >
                       {copied ? <Check size={14} /> : <Copy size={14} />}
                     </ActionIcon>
@@ -618,7 +1001,7 @@ export default function NovyInzeratForm() {
             </Stack>
           )}
 
-          <Text size="xs" c="dimmed" ta="center">
+          <Text size="xs" c={MUTED} ta="center" style={{ fontFamily: MONO_STACK }}>
             Telefon a počítač musí být na stejné WiFi.
           </Text>
         </Stack>

@@ -10,5 +10,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ key: st
     key: session.key,
     fotky: session.fotky.map((f) => ({ webPath: f.webPath, filename: f.filename, size: f.size })),
     mobileConnected: session.mobileConnected,
+    closed: session.closed,
   });
 }

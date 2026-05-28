@@ -12,22 +12,29 @@
     {
       "idx": 1,
       "version": "6",
-      "when": 1779365333544,
-      "tag": "0001_add_qr_platba",
+      "when": 1748822400000,
+      "tag": "0001_add_telefon",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "6",
-      "when": 1748822400000,
-      "tag": "0002_add_telefon",
+      "when": 1748908800000,
+      "tag": "0002_add_stav_zbozi",
       "breakpoints": true
     },
     {
       "idx": 3,
       "version": "6",
-      "when": 1748908800000,
-      "tag": "0003_add_stav_zbozi",
+      "when": 1748995200000,
+      "tag": "0003_add_inzerat_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1779720000000,
+      "tag": "0004_add_user_telefon",
       "breakpoints": true
     }
   ]

@@ -9,50 +9,9 @@ import { inzeraty } from "@/db/schemas";
 import { requireUser } from "@/lib/auth";
 import { parsujFotky } from "@/lib/foto";
 
-export type UpravitInzeratInput = {
-  id: number;
-  nazev: string;
-  popis: string;
-  kategorie: string;
-  kontakt: string;
-  telefon: string | null;
-  stav: string;
-  stavZbozi: string | null;
-  cena: number;
-  free: boolean;
-  qrPlatba: boolean;
-};
-
-export async function upravitInzerat(input: UpravitInzeratInput) {
-  const user = await requireUser();
-
-  const existing = db
-    .select()
-    .from(inzeraty)
-    .where(and(eq(inzeraty.id, input.id), eq(inzeraty.userId, user.id)))
-    .get();
-  if (!existing) {
-    throw new Error("Inzerát nenalezen nebo k němu nemáš oprávnění");
-  }
-
-  await db
-    .update(inzeraty)
-    .set({
-      nazev: input.nazev,
-      popis: input.popis,
-      kategorie: input.kategorie,
-      kontakt: input.kontakt,
-      telefon: input.telefon,
-      stav: input.stav,
-      stavZbozi: input.stavZbozi,
-      cena: input.cena,
-      free: input.free,
-      qrPlatba: input.qrPlatba,
-    })
-    .where(eq(inzeraty.id, input.id));
-
-  revalidatePath("/", "layout");
-}
+// Pozn.: editace inzerátu včetně fotek je v `app/[locale]/novy-inzerat/actions.ts`
+// (export `upravitInzerat`). Tady zůstává jen mazání, které potřebuje fs side-effecty
+// a žádný klient nepředává fotky.
 
 export async function odstranitInzerat(id: number) {
   const user = await requireUser();

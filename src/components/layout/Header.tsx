@@ -1,61 +1,78 @@
 "use client";
 
-import { ActionIcon, Burger, Divider, Drawer, Group, ScrollArea, Text, useMantineColorScheme } from "@mantine/core";
+import { Box, Burger, Divider, Drawer, Group, ScrollArea } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { Home, Moon, Sun } from "lucide-react";
-import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { Home } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { BlogicLogoHalftone } from "@/components/BlogicLogoHalftone";
 import { useAuth } from "@/components/infrastructure/AuthProvider";
 import { useFilterState } from "@/components/infrastructure/FilterStateProvider";
 import { AuthMobileMenu, AuthPill } from "@/components/layout/AuthPill";
-import { LiquidGlass } from "@/components/layout/LiquidGlass";
 import { SearchBar } from "@/components/layout/SearchBar";
 import { Link, usePathname } from "@/i18n/navigation";
 
 const PUBLIC_LINKS = [{ link: "/inzeraty", label: "Inzeráty" }] as const;
 const AUTHED_LINKS = [{ link: "/novy-inzerat", label: "Přidat inzerát" }] as const;
 
-const HEADER_WIDTH_NORMAL = 720;
-const HEADER_WIDTH_NARROW = 560;
-const SPRING = { type: "spring", bounce: 0.28, duration: 0.55 } as const;
-
 const SEARCH_ROUTES = ["/inzeraty"];
+
+const INK = "#1a1a1a";
+const ORANGE = "#FF5722";
+const CREAM = "#F4EFE3";
+const MONO_STACK = "var(--font-jb-mono), 'Courier New', ui-monospace, monospace";
+
+const CAT_SITTING = [
+  "  /^--^\\     /^--^\\     /^--^\\",
+  "  \\____/     \\____/     \\____/",
+  " /      \\   /      \\   /      \\",
+  "|        | |        | |        |",
+  " \\__  __/   \\__  __/   \\__  __/",
+  "    \\ \\       / /         \\ \\",
+  "     \\ \\     / /           \\ \\",
+  "    / /      \\ \\           / /",
+  "    \\/        \\/           \\/",
+].join("\n");
 
 export function HeaderSearch() {
   const [opened, { toggle, close }] = useDisclosure(false);
   const { headerSlot, headerSlotActive, headerSlotRight, headerSlotRightActive } = useFilterState();
-  const showSlot = headerSlot !== null;
-  const showSlotRight = headerSlotRight !== null;
-  // showAnySlot řídí šířku/pozici hlavní pilulky. Posun mimo střed nastane jen
-  // když je některý slot opticky aktivní. Když je slot mountnutý ale neaktivní,
-  // hlavní pilulka zůstává centrovaná.
-  const showAnySlot = (showSlot && headerSlotActive) || (showSlotRight && headerSlotRightActive);
-  const { colorScheme, toggleColorScheme } = useMantineColorScheme();
+  const showSlot = headerSlot !== null && headerSlotActive;
+  const showSlotRight = headerSlotRight !== null && headerSlotRightActive;
   const { user } = useAuth();
   const pathname = usePathname();
   const hideSearch = !SEARCH_ROUTES.includes(pathname);
 
   const links = user ? [...PUBLIC_LINKS, ...AUTHED_LINKS] : [...PUBLIC_LINKS];
 
-  const headerItems = links.map((link) => (
-    <Link
-      key={link.label}
-      href={link.link}
-      style={{
-        textDecoration: "none",
-        padding: "0 10px",
-        fontSize: 14,
-        fontWeight: 500,
-        whiteSpace: "nowrap",
-        color: "var(--mantine-color-text)",
-        opacity: 0.85,
-        transition: "opacity 0.15s",
-      }}
-      onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-      onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.85")}
-    >
-      {link.label}
-    </Link>
-  ));
+  const headerItems = links.map((link) => {
+    const isActive = pathname === link.link || pathname.startsWith(`${link.link}/`);
+    return (
+      <Link
+        key={link.label}
+        href={link.link}
+        style={{
+          textDecoration: "none",
+          padding: "0 10px",
+          fontSize: 13,
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          whiteSpace: "nowrap",
+          color: isActive ? ORANGE : INK,
+          transition: "color 0.15s",
+          fontFamily: MONO_STACK,
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive) e.currentTarget.style.color = ORANGE;
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) e.currentTarget.style.color = INK;
+        }}
+      >
+        {link.label}
+      </Link>
+    );
+  });
 
   const drawerItems = links.map((link) => (
     <Link
@@ -65,10 +82,13 @@ export function HeaderSearch() {
         textDecoration: "none",
         padding: "8px 10px",
         fontSize: 14,
-        fontWeight: 500,
+        fontWeight: 600,
         whiteSpace: "nowrap",
         display: "block",
-        color: "var(--mantine-color-text)",
+        color: INK,
+        textTransform: "uppercase",
+        letterSpacing: "0.04em",
+        fontFamily: MONO_STACK,
       }}
     >
       {link.label}
@@ -77,176 +97,149 @@ export function HeaderSearch() {
 
   return (
     <>
-      {/* Gradient blur backdrop */}
+      {/* Flat full-width bar — cream pruh s dotted spodním borderem. */}
       <div
-        aria-hidden="true"
         style={{
           position: "fixed",
           top: 0,
           left: 0,
           right: 0,
-          height: 80,
-          zIndex: 999,
-          pointerEvents: "none",
-          backdropFilter: "blur(2px)",
-          WebkitBackdropFilter: "blur(2px)",
-          background: colorScheme === "dark" ? "rgba(0, 0, 0, 0.3)" : "rgba(255, 255, 255, 0.3)",
-          maskImage: "linear-gradient(to bottom, black, transparent)",
-          WebkitMaskImage: "linear-gradient(to bottom, black, transparent)",
+          height: 72,
+          zIndex: 1000,
+          background: CREAM,
+          borderBottom: `2px dotted ${INK}`,
         }}
-      />
-
-      {/* Pills row — full-width, flex center. LayoutGroup koordinuje position animace
-          všech tří pilulí zároveň: hlavní pill se posune, vedlejší vyskočí/zmizí. */}
-      <LayoutGroup id="header-pills">
-        <div
+      >
+        <Box
+          visibleFrom="md"
+          aria-hidden
           style={{
-            position: "fixed",
-            top: 16,
-            left: 0,
-            right: 0,
-            zIndex: 1000,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 8,
-            padding: "0 16px",
+            position: "absolute",
+            bottom: -40,
+            right: 420,
             pointerEvents: "none",
+            zIndex: 1,
           }}
         >
-          {/* Levý slot (CompactFilterBar na /inzeraty) — mountnutý jen když je aktivní.
-              Mount/unmount způsobí, že flex layout přepočítá pozici hlavní pilulky →
-              layout="position" na main pillu animuje přechod mezi centrem a off-center. */}
-          <AnimatePresence initial={false}>
-            {showSlot && headerSlotActive && (
-              <motion.div
-                key="slot"
-                layout="position"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1, transition: { duration: 0.2, ease: "easeOut" } }}
-                exit={{ opacity: 0, transition: { duration: 0.15, ease: "easeOut" } }}
-                transition={SPRING}
-                style={{ flex: "0 0 auto", pointerEvents: "auto" }}
-              >
-                {headerSlot}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Hlavní header pill — šířka se mění skokově, pozice animuje přes transform.
-              Žádný will-change ani translateZ(0): propagovaly by element na vlastní
-              compositing layer → backdrop-filter uvnitř LiquidGlass by sampleloval
-              prázdnou vrstvu místo pozadí stránky. */}
-          <motion.div
-            layout="position"
-            transition={SPRING}
+          <pre
             style={{
-              width: showAnySlot ? HEADER_WIDTH_NARROW : HEADER_WIDTH_NORMAL,
-              maxWidth: "100%",
-              flex: "0 1 auto",
-              pointerEvents: "auto",
+              margin: 0,
+              fontFamily: MONO_STACK,
+              fontSize: 9,
+              lineHeight: "10px",
+              color: INK,
+              whiteSpace: "pre",
+              userSelect: "none",
             }}
           >
-            <LiquidGlass
-              radius="pill"
-              glassThickness={80}
-              bezelWidth={60}
-              refractiveIndex={1.5}
-              scaleRatio={0.7}
-              blur={1.0}
-              specularSaturation={4}
-              specularOpacity={0.75}
-              tintColor="0, 0, 0"
-              tintOpacity={0.06}
-              innerShadowBlur={10}
-              innerShadowSpread={-4}
-              outerShadowBlur={28}
-              fallbackBlur={18}
-              style={{ padding: "8px 20px" }}
-            >
-              <Group justify="space-between" align="center" wrap="nowrap">
-                {/* Levá část — logo */}
-                <Group gap="xs" style={{ flex: "0 0 auto" }}>
-                  <ActionIcon
-                    component={Link}
-                    href="/"
-                    variant="subtle"
-                    size="lg"
-                    radius="xl"
-                    aria-label="Domů"
-                    style={{ color: "var(--mantine-color-text)" }}
-                  >
-                    <Home size={20} />
-                  </ActionIcon>
-                  <Text
-                    fw={700}
-                    size="sm"
-                    visibleFrom="sm"
-                    style={{ whiteSpace: "nowrap", color: "var(--mantine-color-text)" }}
-                  >
-                    Blogic Bazar
-                  </Text>
-                </Group>
-
-                {/* Střed — search bar */}
-                {!hideSearch ? (
-                  <Group justify="center" style={{ flex: 1, minWidth: 0, margin: "0 12px" }} visibleFrom="sm">
-                    <SearchBar />
-                  </Group>
-                ) : (
-                  <div style={{ flex: 1, minWidth: 0 }} />
-                )}
-
-                {/* Pravá část — navigace + přepínač tématu + auth pill + burger */}
-                <Group gap={4} justify="flex-end" style={{ flex: "0 0 auto" }}>
-                  <Group gap={0} visibleFrom="sm">
-                    {headerItems}
-                  </Group>
-                  <ActionIcon
-                    variant="subtle"
-                    size="lg"
-                    radius="xl"
-                    onClick={toggleColorScheme}
-                    aria-label="Přepnout barevné schéma"
-                    style={{ color: "var(--mantine-color-text)" }}
-                  >
-                    {colorScheme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-                  </ActionIcon>
-                  <div style={{ marginLeft: 4 }} className="auth-pill-desktop">
-                    <AuthPill />
-                  </div>
-                  <Burger
-                    opened={opened}
-                    onClick={toggle}
-                    size="sm"
-                    hiddenFrom="sm"
-                    aria-label="Otevřít menu"
-                    color="var(--mantine-color-text)"
-                  />
-                </Group>
-              </Group>
-            </LiquidGlass>
-          </motion.div>
-
-          {/* Pravý slot (cena + rezervace na detail stránce) — mountnutý jen když je aktivní.
-              Mount/unmount způsobí, že flex layout přepočítá pozici hlavní pilulky. */}
-          <AnimatePresence initial={false}>
-            {showSlotRight && headerSlotRightActive && (
-              <motion.div
-                key="slot-right"
-                layout="position"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1, transition: { duration: 0.2, ease: "easeOut" } }}
-                exit={{ opacity: 0, transition: { duration: 0.15, ease: "easeOut" } }}
-                transition={SPRING}
-                style={{ flex: "0 0 auto", pointerEvents: "auto" }}
+            {CAT_SITTING}
+          </pre>
+        </Box>
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            padding: "0 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+          }}
+        >
+          <Group h="100%" align="center" justify="space-between" wrap="nowrap" gap="md" style={{ width: "100%" }}>
+            {/* Levá část — Home + logo */}
+            <Group gap="sm" wrap="nowrap" style={{ flex: "0 0 auto" }}>
+              <Link
+                href="/"
+                aria-label="Domů"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 36,
+                  height: 36,
+                  color: INK,
+                  border: `2px solid ${INK}`,
+                  background: "transparent",
+                  textDecoration: "none",
+                }}
               >
-                {headerSlotRight}
-              </motion.div>
-            )}
-          </AnimatePresence>
+                <Home size={18} />
+              </Link>
+              <Box visibleFrom="sm" style={{ whiteSpace: "nowrap", display: "inline-block" }}>
+                <BlogicLogoHalftone size={38} />
+              </Box>
+            </Group>
+
+            {/* Střed — CompactFilterBar (vlevo) + search + slotRight (cena+rezervace
+                pilulka na detailu). Detail page má searchbar skrytý, takže pilulka
+                přirozeně sedí v centru. */}
+            <Box
+              visibleFrom="sm"
+              style={{
+                flex: 1,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: 10,
+                minWidth: 0,
+              }}
+            >
+              <AnimatePresence initial={false}>
+                {showSlot && (
+                  <motion.div
+                    key="slot"
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -6 }}
+                    transition={{ duration: 0.18 }}
+                    style={{ display: "inline-flex" }}
+                  >
+                    {headerSlot}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              {!hideSearch && (
+                <div style={{ width: "100%", maxWidth: 360 }}>
+                  <SearchBar />
+                </div>
+              )}
+              <AnimatePresence initial={false}>
+                {showSlotRight && (
+                  <motion.div
+                    key="slot-right-center"
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.18 }}
+                    style={{ display: "inline-flex" }}
+                  >
+                    {headerSlotRight}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Box>
+
+            {/* Pravá část — nav + auth + burger */}
+            <Group gap={8} wrap="nowrap" style={{ flex: "0 0 auto" }}>
+              <Group gap={0} visibleFrom="sm">
+                {headerItems}
+              </Group>
+              <div className="auth-pill-desktop">
+                <AuthPill />
+              </div>
+              <Burger
+                opened={opened}
+                onClick={toggle}
+                size="sm"
+                hiddenFrom="sm"
+                aria-label="Otevřít menu"
+                color={INK}
+              />
+            </Group>
+          </Group>
         </div>
-      </LayoutGroup>
+      </div>
 
       {/* Mobilní menu */}
       <Drawer

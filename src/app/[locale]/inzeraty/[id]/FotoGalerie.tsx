@@ -1,130 +1,291 @@
 "use client";
 
-import { DepthSelect, type DepthSelectItem } from "@gfazioli/mantine-depth-select";
+import { Modal } from "@mantine/core";
+import { ChevronLeft, ChevronRight, ImageIcon } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import NextImage from "next/image";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-const SHADOW = "0 10px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3)";
-const FALLBACK_BG = "var(--mantine-color-dark-8)";
+const INK = "#1a1a1a";
+const ORANGE = "#FF5722";
+const FALLBACK_BG = "#FBFAF6";
 
 type Props = {
   fotky: string[];
   nazev: string;
 };
 
-// Vyzobne průměrnou barvu okrajů obrázku (perimetr 16×16 downsamplu) a vrátí
-// ji jako rgb(). Tím se "letterbox" prostor u objectFit:contain napojí na obraz
-// místo aby s ním tvrdě kontrastoval — bez nutnosti rozmazaného duplikátu.
-function useEdgeColor(src: string): string {
-  const [color, setColor] = useState(FALLBACK_BG);
-
-  useEffect(() => {
-    let cancelled = false;
-    const img = new window.Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      if (cancelled) return;
-      try {
-        const SAMPLE = 16;
-        const canvas = document.createElement("canvas");
-        canvas.width = SAMPLE;
-        canvas.height = SAMPLE;
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0, SAMPLE, SAMPLE);
-        const { data } = ctx.getImageData(0, 0, SAMPLE, SAMPLE);
-
-        let r = 0;
-        let g = 0;
-        let b = 0;
-        let count = 0;
-        for (let y = 0; y < SAMPLE; y++) {
-          for (let x = 0; x < SAMPLE; x++) {
-            // Pouze pixely na perimetru — vnitřek přeskočíme
-            if (x > 0 && x < SAMPLE - 1 && y > 0 && y < SAMPLE - 1) continue;
-            const i = (y * SAMPLE + x) * 4;
-            r += data[i];
-            g += data[i + 1];
-            b += data[i + 2];
-            count++;
-          }
-        }
-        setColor(`rgb(${(r / count) | 0}, ${(g / count) | 0}, ${(b / count) | 0})`);
-      } catch {
-        // CORS-tainted canvas → fallback zůstane
-      }
-    };
-    img.src = src;
-    return () => {
-      cancelled = true;
-    };
-  }, [src]);
-
-  return color;
-}
-
-function CardView({ src, alt }: { src: string; alt: string }) {
-  const bg = useEdgeColor(src);
+function EmptyState() {
   return (
     <div
       style={{
-        position: "relative",
+        aspectRatio: "4/3",
         width: "100%",
-        height: "100%",
-        borderRadius: 16,
+        position: "relative",
         overflow: "hidden",
-        boxShadow: SHADOW,
-        background: bg,
-        transition: "background 0.4s ease",
+        borderRadius: 0,
+        background: FALLBACK_BG,
+        border: `2px dotted ${INK}`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#6b6b6b",
+        fontSize: 14,
       }}
     >
-      <NextImage src={src} alt={alt} fill style={{ objectFit: "contain" }} />
+      <ImageIcon size={64} strokeWidth={1.2} />
     </div>
   );
 }
 
+function GlassPill({
+  children,
+  onClick,
+  ariaLabel,
+  side,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  ariaLabel?: string;
+  side?: "left" | "right";
+}) {
+  const positional: React.CSSProperties = side
+    ? {
+        position: "absolute",
+        top: "50%",
+        [side]: 12,
+        transform: "translateY(-50%)",
+        zIndex: 3,
+      }
+    : { position: "absolute", bottom: 12, right: 14, zIndex: 3 };
+
+  const content = (
+    <div
+      style={{
+        padding: side ? "8px 10px" : "4px 9px",
+        borderRadius: 0,
+        background: INK,
+        border: `2px solid ${INK}`,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#F4EFE3",
+      }}
+    >
+      {children}
+    </div>
+  );
+
+  if (!onClick) {
+    return <div style={positional}>{content}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      aria-label={ariaLabel}
+      style={{ ...positional, border: "none", background: "transparent", cursor: "pointer", padding: 0 }}
+    >
+      {content}
+    </button>
+  );
+}
+
 export function FotoGalerie({ fotky, nazev }: Props) {
-  if (fotky.length === 0) {
-    return (
-      <div
+  const [active, setActive] = useState(0);
+  const [lightbox, setLightbox] = useState(false);
+
+  const total = fotky.length;
+  const hasMany = total > 1;
+
+  const next = useCallback(() => setActive((i) => (i + 1) % total), [total]);
+  const prev = useCallback(() => setActive((i) => (i - 1 + total) % total), [total]);
+
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") next();
+      else if (e.key === "ArrowLeft") prev();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox, next, prev]);
+
+  if (total === 0) return <EmptyState />;
+
+  const aktualni = fotky[active];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* Hlavní 4:3 obrázek */}
+      <button
+        type="button"
+        onClick={() => setLightbox(true)}
+        aria-label="Zobrazit fotku v plné velikosti"
         style={{
-          aspectRatio: "4/3",
           position: "relative",
+          aspectRatio: "4/3",
+          width: "100%",
+          borderRadius: 0,
           overflow: "hidden",
-          borderRadius: 16,
-          background: "var(--mantine-color-dark-6)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "var(--mantine-color-dimmed)",
-          fontSize: 14,
-          boxShadow: SHADOW,
+          background: FALLBACK_BG,
+          border: `2px dotted ${INK}`,
+          padding: 0,
+          cursor: "zoom-in",
+          display: "block",
         }}
       >
-        Bez fotky
-      </div>
-    );
-  }
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={aktualni}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            style={{ position: "absolute", inset: 0 }}
+          >
+            <NextImage
+              src={aktualni}
+              alt={`${nazev} – fotka ${active + 1}`}
+              fill
+              sizes="(max-width: 900px) 100vw, 540px"
+              style={{ objectFit: "cover" }}
+              priority
+            />
+          </motion.div>
+        </AnimatePresence>
 
-  if (fotky.length === 1) {
-    return (
-      <div style={{ borderRadius: 16, overflow: "hidden", boxShadow: SHADOW }}>
-        <NextImage
-          src={fotky[0]}
-          alt={nazev}
-          width={0}
-          height={0}
-          sizes="100vw"
-          style={{ width: "100%", height: "auto", display: "block" }}
-        />
-      </div>
-    );
-  }
+        {hasMany && (
+          <>
+            <GlassPill side="left" ariaLabel="Předchozí fotka" onClick={prev}>
+              <ChevronLeft size={20} color="white" />
+            </GlassPill>
+            <GlassPill side="right" ariaLabel="Další fotka" onClick={next}>
+              <ChevronRight size={20} color="white" />
+            </GlassPill>
+            <GlassPill>
+              <span
+                style={{
+                  color: "#F4EFE3",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  fontVariantNumeric: "tabular-nums",
+                  lineHeight: 1,
+                  fontFamily: "var(--font-jb-mono), 'Courier New', ui-monospace, monospace",
+                }}
+              >
+                {active + 1} / {total}
+              </span>
+            </GlassPill>
+          </>
+        )}
+      </button>
 
-  const items: DepthSelectItem[] = fotky.map((src, i) => ({
-    value: src,
-    view: <CardView src={src} alt={`${nazev} – fotka ${i + 1}`} />,
-  }));
+      {/* Thumbnaily — také 4:3 */}
+      {hasMany && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${Math.min(total, 5)}, 1fr)`,
+            gap: 8,
+          }}
+        >
+          {fotky.map((src, i) => {
+            const aktivni = i === active;
+            return (
+              <button
+                key={src}
+                type="button"
+                onClick={() => setActive(i)}
+                aria-label={`Fotka ${i + 1}`}
+                style={{
+                  position: "relative",
+                  aspectRatio: "4/3",
+                  borderRadius: 0,
+                  overflow: "hidden",
+                  border: aktivni ? `2px solid ${ORANGE}` : `2px dotted ${INK}`,
+                  background: FALLBACK_BG,
+                  padding: 0,
+                  cursor: "pointer",
+                  transition: "border-color 0.16s, transform 0.16s",
+                  transform: aktivni ? "scale(1.0)" : "scale(0.985)",
+                  opacity: aktivni ? 1 : 0.72,
+                }}
+              >
+                <NextImage src={src} alt="" fill sizes="120px" style={{ objectFit: "cover" }} />
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-  return <DepthSelect data={items} w="100%" h={320} loop blurStep={3} visibleCards={5} />;
+      <Modal
+        opened={lightbox}
+        onClose={() => setLightbox(false)}
+        centered
+        withCloseButton={false}
+        padding={0}
+        size="auto"
+        radius={0}
+        overlayProps={{ backgroundOpacity: 0.85, blur: 12 }}
+        styles={{ content: { background: "transparent", boxShadow: "none" } }}
+      >
+        <div
+          style={{
+            position: "relative",
+            maxWidth: "92vw",
+            maxHeight: "88vh",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <NextImage
+            src={aktualni}
+            alt={`${nazev} – fotka ${active + 1}`}
+            width={1600}
+            height={1200}
+            sizes="92vw"
+            style={{
+              width: "auto",
+              height: "auto",
+              maxWidth: "92vw",
+              maxHeight: "88vh",
+              objectFit: "contain",
+              borderRadius: 0,
+              display: "block",
+            }}
+          />
+          {hasMany && (
+            <>
+              <GlassPill side="left" ariaLabel="Předchozí fotka" onClick={prev}>
+                <ChevronLeft size={22} color="white" />
+              </GlassPill>
+              <GlassPill side="right" ariaLabel="Další fotka" onClick={next}>
+                <ChevronRight size={22} color="white" />
+              </GlassPill>
+              <GlassPill>
+                <span
+                  style={{
+                    color: "white",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: "var(--font-geist-mono), monospace",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {active + 1} / {total}
+                </span>
+              </GlassPill>
+            </>
+          )}
+        </div>
+      </Modal>
+    </div>
+  );
 }
