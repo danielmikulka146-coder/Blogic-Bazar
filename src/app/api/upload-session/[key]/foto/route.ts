@@ -3,8 +3,12 @@ import { addFoto, getSession } from "@/lib/uploadSession";
 export async function POST(req: Request, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
 
-  if (!getSession(key)) {
+  const session = getSession(key);
+  if (!session) {
     return Response.json({ error: "Session nenalezena nebo expirovala" }, { status: 404 });
+  }
+  if (session.closed) {
+    return Response.json({ error: "Formulář na počítači byl zavřen" }, { status: 410 });
   }
 
   const formData = await req.formData();

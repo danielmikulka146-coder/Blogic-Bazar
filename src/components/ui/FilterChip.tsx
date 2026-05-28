@@ -3,7 +3,12 @@
 import { ChevronDown } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { LiquidGlass } from "@/components/layout/LiquidGlass";
+
+const INK = "#1a1a1a";
+const CREAM = "#F4EFE3";
+const CARD = "#FBFAF6";
+const ORANGE = "#FF5722";
+const MONO_STACK = "var(--font-jb-mono), 'Courier New', ui-monospace, monospace";
 
 type Props = {
   label: string;
@@ -15,61 +20,9 @@ type Props = {
   onToggle?: () => void;
   /** Obsah dropdownu (multi-select options atd.) */
   children?: ReactNode;
-  /** Minimální šířka panelu při otevření — ať se text options vejde */
+  /** Minimální šířka panelu při otevření */
   panelMinWidth?: number;
 };
-
-function ChipHeader({
-  label,
-  activeCount,
-  asToggle,
-  open,
-}: {
-  label: string;
-  activeCount: number;
-  asToggle: boolean;
-  open: boolean;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        color: "var(--mantine-color-text)",
-        fontSize: 13,
-        fontWeight: 500,
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span>{label}</span>
-      {!asToggle && activeCount > 0 && (
-        <span
-          style={{
-            background: "var(--glass-badge-bg)",
-            borderRadius: 10,
-            padding: "1px 7px",
-            fontSize: 11,
-            fontWeight: 600,
-            minWidth: 18,
-            textAlign: "center",
-          }}
-        >
-          {activeCount}
-        </span>
-      )}
-      {!asToggle && (
-        <ChevronDown
-          size={14}
-          style={{
-            transform: open ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 0.2s",
-          }}
-        />
-      )}
-    </div>
-  );
-}
 
 export function FilterChip({
   label,
@@ -81,11 +34,11 @@ export function FilterChip({
   panelMinWidth = 220,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [hover, setHover] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const isActive = asToggle ? active : activeCount > 0;
 
-  // Click outside / Escape
   useEffect(() => {
     if (!open) return;
     const onMouseDown = (e: MouseEvent) => {
@@ -108,76 +61,86 @@ export function FilterChip({
     else setOpen((o) => !o);
   };
 
+  const bg = isActive ? ORANGE : hover || open ? CREAM : CARD;
+  const color = isActive ? "#4A1B0C" : INK;
+
   return (
     <div ref={containerRef} style={{ position: "relative", display: "inline-block" }}>
-      {/* Spacer — drží layout slot pro zavřený chip (sourozenci v Group se neposunou) */}
-      <div aria-hidden="true" style={{ visibility: "hidden", padding: "6px 14px" }}>
-        <ChipHeader label={label} activeCount={activeCount} asToggle={asToggle} open={false} />
-      </div>
-
-      {/* Skutečný chip — absolute, roste na open */}
-      <motion.div
-        layout
-        transition={{ type: "spring", bounce: 0.28, duration: 0.5 }}
+      <button
+        type="button"
+        onClick={handleClick}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
         style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          minWidth: "100%",
-          zIndex: open ? 100 : 1,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "6px 12px",
+          background: bg,
+          color,
+          border: `2px solid ${INK}`,
+          borderRadius: 0,
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          whiteSpace: "nowrap",
+          fontFamily: MONO_STACK,
+          transition: "background-color 0.15s, color 0.15s",
         }}
       >
-        <LiquidGlass
-          radius={20}
-          glassThickness={50}
-          bezelWidth={16}
-          refractiveIndex={1.5}
-          scaleRatio={0.7}
-          blur={1.0}
-          specularSaturation={4}
-          specularOpacity={0.5}
-          tintColor={isActive ? "253, 126, 20" : "0, 0, 0"}
-          tintOpacity={isActive ? 0.18 : 0.08}
-          innerShadowBlur={10}
-          innerShadowSpread={-3}
-          outerShadowBlur={20}
-          fallbackBlur={16}
-        >
-          <motion.button
-            type="button"
-            onClick={handleClick}
-            whileTap={{ scale: 0.97 }}
-            transition={{ type: "spring", stiffness: 500, damping: 28 }}
+        <span>{label}</span>
+        {!asToggle && activeCount > 0 && (
+          <span
             style={{
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              padding: "6px 14px",
-              width: "100%",
-              display: "block",
-              textAlign: "left",
+              background: isActive ? "#4A1B0C" : INK,
+              color: isActive ? ORANGE : CARD,
+              padding: "0 6px",
+              fontSize: 11,
+              fontWeight: 700,
+              minWidth: 18,
+              textAlign: "center",
+              lineHeight: 1.4,
             }}
           >
-            <ChipHeader label={label} activeCount={activeCount} asToggle={asToggle} open={open} />
-          </motion.button>
+            {activeCount}
+          </span>
+        )}
+        {!asToggle && (
+          <ChevronDown
+            size={14}
+            style={{
+              transform: open ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.2s",
+            }}
+          />
+        )}
+      </button>
 
-          <AnimatePresence initial={false}>
-            {open && children && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1, transition: { delay: 0.08, duration: 0.2 } }}
-                exit={{ opacity: 0, transition: { duration: 0.1 } }}
-                style={{
-                  minWidth: panelMinWidth,
-                  padding: "4px 6px 6px",
-                }}
-              >
-                {children}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </LiquidGlass>
-      </motion.div>
+      <AnimatePresence initial={false}>
+        {open && children && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
+            style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              left: 0,
+              minWidth: panelMinWidth,
+              background: CARD,
+              border: `2px dotted ${INK}`,
+              borderRadius: 0,
+              padding: 6,
+              zIndex: 100,
+            }}
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

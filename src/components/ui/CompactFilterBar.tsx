@@ -1,10 +1,16 @@
 "use client";
 
-import { BadgeCheck, Gift, LayoutGrid, Sparkles, X } from "lucide-react";
+import { CircleDot, Coins, Gift, Package, Tags, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { LiquidGlass } from "@/components/layout/LiquidGlass";
 import { ReactiveCheckOption, ReactiveSeparator } from "./GlassDropdownPanel";
+import { PriceRangeControl } from "./PriceRangeControl";
+
+const INK = "#1a1a1a";
+const CREAM = "#F4EFE3";
+const CARD = "#FBFAF6";
+const ORANGE = "#FF5722";
+const MONO_STACK = "var(--font-jb-mono), 'Courier New', ui-monospace, monospace";
 
 type Props = {
   kategorie: string[];
@@ -15,19 +21,22 @@ type Props = {
   setStavyZbozi: (v: string[]) => void;
   jenZdarma: boolean;
   setJenZdarma: (v: boolean) => void;
+  minCena: number | null;
+  maxCena: number | null;
+  setMinCena: (v: number | null) => void;
+  setMaxCena: (v: number | null) => void;
+  maxAvailableCena: number;
   allKategorie: string[];
   allStavy: string[];
   allStavyZbozi: string[];
   resetAll: () => void;
-  /** Když false, pilulka je v DOM, ale je opacity 0 a nezachytává klik.
-   * LiquidGlass instance zůstává namountovaná → žádný cold-mount snap. */
   visible?: boolean;
 };
 
-type OpenMenu = "kategorie" | "stav" | "stavZbozi" | null;
+type OpenMenu = "kategorie" | "stav" | "stavZbozi" | "cena" | null;
 
-const ICON_SIZE = 18;
-const HEIGHT = 48;
+const ICON_SIZE = 16;
+const BUTTON_SIZE = 34;
 
 function IconButton({
   children,
@@ -42,40 +51,47 @@ function IconButton({
   active?: boolean;
   onClick: () => void;
 }) {
+  const [hover, setHover] = useState(false);
+  const bg = active ? ORANGE : hover ? CREAM : CARD;
+  const color = active ? "#4A1B0C" : INK;
   return (
     <motion.button
       type="button"
       onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       whileTap={{ scale: 0.92 }}
       transition={{ type: "spring", stiffness: 500, damping: 28 }}
       style={{
         position: "relative",
-        border: "none",
+        height: BUTTON_SIZE,
+        minWidth: BUTTON_SIZE,
+        padding: count !== undefined && count > 0 ? "0 8px" : 0,
+        background: bg,
+        color,
+        border: `2px solid ${INK}`,
+        borderRadius: 0,
         cursor: "pointer",
-        background: active ? "rgba(253,126,20,0.22)" : "transparent",
-        color: "var(--mantine-color-text)",
-        height: HEIGHT - 14,
-        minWidth: HEIGHT - 14,
-        padding: "0 8px",
-        borderRadius: 999,
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
         gap: 4,
-        transition: "background-color 0.15s",
+        transition: "background-color 0.15s, color 0.15s",
+        fontFamily: MONO_STACK,
       }}
     >
       {icon}
       {count !== undefined && count > 0 && (
         <span
           style={{
-            background: "var(--glass-badge-bg)",
-            borderRadius: 10,
-            padding: "1px 6px",
+            background: active ? "#4A1B0C" : INK,
+            color: active ? ORANGE : CARD,
+            padding: "0 5px",
             fontSize: 10,
-            fontWeight: 600,
-            minWidth: 16,
+            fontWeight: 700,
+            minWidth: 14,
             textAlign: "center",
+            lineHeight: 1.4,
           }}
         >
           {count}
@@ -112,11 +128,6 @@ function OptionList({
   );
 }
 
-/**
- * Compact filter bar pro header slot. Používá FilterChip-style snap-free LiquidGlass:
- * celá pilulka je jeden LiquidGlass, který morphuje (motion.div layout) když se otevře
- * dropdown — žádný separátní portal panel, žádný cold-mount snap.
- */
 export function CompactFilterBar({
   kategorie,
   setKategorie,
@@ -126,6 +137,11 @@ export function CompactFilterBar({
   setStavyZbozi,
   jenZdarma,
   setJenZdarma,
+  minCena,
+  maxCena,
+  setMinCena,
+  setMaxCena,
+  maxAvailableCena,
   allKategorie,
   allStavy,
   allStavyZbozi,
@@ -152,42 +168,9 @@ export function CompactFilterBar({
     };
   }, [openMenu]);
 
-  const hasAnyActive = kategorie.length > 0 || stavy.length > 0 || stavyZbozi.length > 0 || jenZdarma;
+  const cenaActive = minCena != null || maxCena != null;
+  const hasAnyActive = kategorie.length > 0 || stavy.length > 0 || stavyZbozi.length > 0 || jenZdarma || cenaActive;
   const open = openMenu !== null;
-
-  const TriggerRow = (
-    <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "7px 8px" }}>
-      <IconButton
-        icon={<LayoutGrid size={ICON_SIZE} />}
-        count={kategorie.length}
-        active={openMenu === "kategorie" || kategorie.length > 0}
-        onClick={() => setOpenMenu((v) => (v === "kategorie" ? null : "kategorie"))}
-      />
-      <IconButton
-        icon={<BadgeCheck size={ICON_SIZE} />}
-        count={stavy.length}
-        active={openMenu === "stav" || stavy.length > 0}
-        onClick={() => setOpenMenu((v) => (v === "stav" ? null : "stav"))}
-      />
-      <IconButton
-        icon={<Sparkles size={ICON_SIZE} />}
-        count={stavyZbozi.length}
-        active={openMenu === "stavZbozi" || stavyZbozi.length > 0}
-        onClick={() => setOpenMenu((v) => (v === "stavZbozi" ? null : "stavZbozi"))}
-      />
-      <IconButton icon={<Gift size={ICON_SIZE} />} active={jenZdarma} onClick={() => setJenZdarma(!jenZdarma)} />
-      {hasAnyActive && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.7 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: "spring", bounce: 0.35, duration: 0.4 }}
-          style={{ display: "inline-flex" }}
-        >
-          <IconButton icon={<X size={ICON_SIZE} />} onClick={resetAll} />
-        </motion.div>
-      )}
-    </div>
-  );
 
   return (
     <div
@@ -200,71 +183,92 @@ export function CompactFilterBar({
         pointerEvents: visible ? "auto" : "none",
       }}
     >
-      {/* Spacer — fixní výška pro layout (header slot se nehýbe, když pilulka roste) */}
-      <div aria-hidden="true" style={{ visibility: "hidden" }}>
-        {TriggerRow}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <IconButton
+          icon={<Tags size={ICON_SIZE} />}
+          count={kategorie.length}
+          active={openMenu === "kategorie" || kategorie.length > 0}
+          onClick={() => setOpenMenu((v) => (v === "kategorie" ? null : "kategorie"))}
+        />
+        <IconButton
+          icon={<CircleDot size={ICON_SIZE} />}
+          count={stavy.length}
+          active={openMenu === "stav" || stavy.length > 0}
+          onClick={() => setOpenMenu((v) => (v === "stav" ? null : "stav"))}
+        />
+        <IconButton
+          icon={<Package size={ICON_SIZE} />}
+          count={stavyZbozi.length}
+          active={openMenu === "stavZbozi" || stavyZbozi.length > 0}
+          onClick={() => setOpenMenu((v) => (v === "stavZbozi" ? null : "stavZbozi"))}
+        />
+        <IconButton
+          icon={<Coins size={ICON_SIZE} />}
+          count={cenaActive ? 1 : 0}
+          active={openMenu === "cena" || cenaActive}
+          onClick={() => setOpenMenu((v) => (v === "cena" ? null : "cena"))}
+        />
+        <IconButton icon={<Gift size={ICON_SIZE} />} active={jenZdarma} onClick={() => setJenZdarma(!jenZdarma)} />
+        {hasAnyActive && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: "spring", bounce: 0.35, duration: 0.4 }}
+            style={{ display: "inline-flex" }}
+          >
+            <IconButton icon={<X size={ICON_SIZE} />} onClick={resetAll} />
+          </motion.div>
+        )}
       </div>
 
-      {/* Skutečná pilulka — absolute, layout-morph při otevření dropdownu */}
-      <motion.div
-        layout
-        transition={{ type: "spring", bounce: 0.28, duration: 0.5 }}
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          minWidth: "100%",
-          zIndex: open ? 100 : 1,
-        }}
-      >
-        <LiquidGlass
-          radius={24}
-          glassThickness={80}
-          bezelWidth={24}
-          refractiveIndex={1.5}
-          scaleRatio={0.7}
-          blur={1.0}
-          specularSaturation={4}
-          specularOpacity={0.75}
-          tintColor="0, 0, 0"
-          tintOpacity={0.06}
-          innerShadowBlur={10}
-          innerShadowSpread={-4}
-          outerShadowBlur={28}
-          fallbackBlur={18}
-        >
-          {TriggerRow}
-
-          <AnimatePresence initial={false}>
-            {open && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1, transition: { delay: 0.08, duration: 0.2 } }}
-                exit={{ opacity: 0, transition: { duration: 0.1 } }}
-                style={{ padding: "0 6px 8px" }}
-              >
-                {openMenu === "kategorie" && (
-                  <OptionList
-                    items={allKategorie}
-                    selected={kategorie}
-                    onToggle={(k) => toggle(kategorie, k, setKategorie)}
-                  />
-                )}
-                {openMenu === "stav" && (
-                  <OptionList items={allStavy} selected={stavy} onToggle={(s) => toggle(stavy, s, setStavy)} />
-                )}
-                {openMenu === "stavZbozi" && (
-                  <OptionList
-                    items={allStavyZbozi}
-                    selected={stavyZbozi}
-                    onToggle={(s) => toggle(stavyZbozi, s, setStavyZbozi)}
-                  />
-                )}
-              </motion.div>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
+            style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              left: 0,
+              minWidth: 220,
+              background: CARD,
+              border: `2px dotted ${INK}`,
+              borderRadius: 0,
+              padding: 6,
+              zIndex: 100,
+            }}
+          >
+            {openMenu === "kategorie" && (
+              <OptionList
+                items={allKategorie}
+                selected={kategorie}
+                onToggle={(k) => toggle(kategorie, k, setKategorie)}
+              />
             )}
-          </AnimatePresence>
-        </LiquidGlass>
-      </motion.div>
+            {openMenu === "stav" && (
+              <OptionList items={allStavy} selected={stavy} onToggle={(s) => toggle(stavy, s, setStavy)} />
+            )}
+            {openMenu === "stavZbozi" && (
+              <OptionList
+                items={allStavyZbozi}
+                selected={stavyZbozi}
+                onToggle={(s) => toggle(stavyZbozi, s, setStavyZbozi)}
+              />
+            )}
+            {openMenu === "cena" && (
+              <PriceRangeControl
+                minCena={minCena}
+                maxCena={maxCena}
+                setMinCena={setMinCena}
+                setMaxCena={setMaxCena}
+                maxAvailable={maxAvailableCena}
+              />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

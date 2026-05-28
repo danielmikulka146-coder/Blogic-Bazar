@@ -7,8 +7,8 @@ type FilterStateValue = {
   setSearchQuery: (q: string) => void;
   headerSlot: ReactNode | null;
   setHeaderSlot: (node: ReactNode | null) => void;
-  /** Slot je mountnutý (LiquidGlass cache zůstává), ale opticky ho schováme.
-   * Header dle toho posune hlavní pilulku mezi centrem a off-center pozicí. */
+  /** Slot je mountnutý ale opticky ho schováme. Header dle toho posune
+   * hlavní pilulku mezi centrem a off-center pozicí. */
   headerSlotActive: boolean;
   setHeaderSlotActive: (active: boolean) => void;
   headerSlotRight: ReactNode | null;

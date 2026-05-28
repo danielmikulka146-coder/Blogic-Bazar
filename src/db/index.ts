@@ -26,9 +26,41 @@ sqlite.exec(`
   );
 `);
 
-const hasUserIdCol = sqlite.prepare("SELECT 1 FROM pragma_table_info('inzeraty') WHERE name = ?").get("userId");
-if (!hasUserIdCol) {
+function hasInzeratColumn(name: string): boolean {
+  return !!sqlite.prepare("SELECT 1 FROM pragma_table_info('inzeraty') WHERE name = ?").get(name);
+}
+
+function hasUsersColumn(name: string): boolean {
+  return !!sqlite.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = ?").get(name);
+}
+
+if (!hasUsersColumn("telefon")) {
+  sqlite.exec("ALTER TABLE users ADD COLUMN telefon TEXT");
+}
+if (!hasUsersColumn("telefonPrefix")) {
+  sqlite.exec("ALTER TABLE users ADD COLUMN telefonPrefix TEXT");
+}
+
+if (!hasInzeratColumn("userId")) {
   sqlite.exec("ALTER TABLE inzeraty ADD COLUMN userId INTEGER REFERENCES users(id)");
+}
+if (!hasInzeratColumn("reservedBy")) {
+  sqlite.exec("ALTER TABLE inzeraty ADD COLUMN reservedBy INTEGER REFERENCES users(id)");
+}
+if (!hasInzeratColumn("buyerId")) {
+  sqlite.exec("ALTER TABLE inzeraty ADD COLUMN buyerId INTEGER REFERENCES users(id)");
+}
+if (!hasInzeratColumn("paymentDone")) {
+  sqlite.exec("ALTER TABLE inzeraty ADD COLUMN paymentDone INTEGER NOT NULL DEFAULT 0");
+}
+if (!hasInzeratColumn("viewsCount")) {
+  sqlite.exec("ALTER TABLE inzeraty ADD COLUMN viewsCount INTEGER NOT NULL DEFAULT 0");
+}
+if (!hasInzeratColumn("ownerLastSeenViews")) {
+  sqlite.exec("ALTER TABLE inzeraty ADD COLUMN ownerLastSeenViews INTEGER NOT NULL DEFAULT 0");
+}
+if (!hasInzeratColumn("soldAt")) {
+  sqlite.exec("ALTER TABLE inzeraty ADD COLUMN soldAt INTEGER");
 }
 
 export const db = drizzle(sqlite, { schema });

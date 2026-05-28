@@ -1,13 +1,21 @@
+// Client Component — zobrazí grid vlastních inzerátů s možností úpravy a mazání.
+// Mazání se odehraje lokálně (animace zmizení) bez reload stránky.
 "use client";
 
-import { ActionIcon, Badge, Card, Group, Text, Title } from "@mantine/core";
+import { Group, Stack } from "@mantine/core";
 import { Edit3, Trash2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import Image from "next/image";
 import { useState, useTransition } from "react";
+import { InzeratCard } from "@/app/[locale]/inzeraty/InzeratCard";
 import { odstranitInzerat } from "@/app/[locale]/inzeraty/owner-actions";
 import { Link } from "@/i18n/navigation";
-import { hlavniFotka } from "@/lib/foto";
+
+const INK = "#1a1a1a";
+const CARD = "#FBFAF6";
+const CREAM = "#F4EFE3";
+const ORANGE = "#FF5722";
+const BURNT = "#4A1B0C";
+const MONO_STACK = "var(--font-jb-mono), 'Courier New', ui-monospace, monospace";
 
 type Row = {
   id: number;
@@ -21,18 +29,20 @@ type Row = {
 };
 
 export function MojeInzeratyClient({ data }: { data: Row[] }) {
-  const [items, setItems] = useState(data);
-  const [confirmId, setConfirmId] = useState<number | null>(null);
-  const [pendingId, startTransition] = useTransition();
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [items, setItems] = useState(data); // lokální kopie — odstraněné inzeráty zmizí z pole bez reload
+  const [confirmId, setConfirmId] = useState<number | null>(null); // ID inzerátu čekající na potvrzení smazání
+  const [pendingId, startTransition] = useTransition(); // true dokud server action běží
+  const [busyId, setBusyId] = useState<number | null>(null); // ID inzerátu, který se právě maže
 
   const handleDelete = (id: number) => {
-    setBusyId(id);
+    setBusyId(id); // okamžitě označíme konkrétní inzerát jako "maže se" (deaktivuje tlačítka)
     startTransition(async () => {
       try {
-        await odstranitInzerat(id);
+        await odstranitInzerat(id); // server action — smaže z DB a disku
+        // Po úspěšném smazání odebereme inzerát z lokálního stavu → AnimatePresence ho animuje ven.
         setItems((prev) => prev.filter((x) => x.id !== id));
       } finally {
+        // finally = spustí se vždy (i při chybě) — vyčistíme stav ať dopadlo cokoli
         setBusyId(null);
         setConfirmId(null);
       }
@@ -53,83 +63,126 @@ export function MojeInzeratyClient({ data }: { data: Row[] }) {
             exit={{ opacity: 0, scale: 0.92 }}
             transition={{ type: "spring", stiffness: 320, damping: 28 }}
           >
-            <Card shadow="md" padding="md" radius="lg" style={{ position: "relative" }}>
-              <Link href={`/inzeraty/${item.id}`} style={{ textDecoration: "none", display: "block" }}>
-                <div
-                  style={{
-                    aspectRatio: "4/3",
-                    position: "relative",
-                    overflow: "hidden",
-                    borderRadius: 12,
-                    boxShadow: "0 10px 24px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3)",
-                  }}
-                >
-                  <Image src={hlavniFotka(item.foto)} alt={item.nazev} fill style={{ objectFit: "cover" }} />
-                </div>
-                <Group justify="space-between" align="center" mt={12} gap={6}>
-                  <Badge color="blue" variant="light">
-                    {item.kategorie}
-                  </Badge>
-                  <Badge
-                    color={item.stav === "dostupné" ? "green" : item.stav === "prodáno" ? "red" : "orange"}
-                    variant="light"
-                  >
-                    {item.stav}
-                  </Badge>
-                </Group>
-                <Title order={4} c="var(--mantine-color-text)" mt={6}>
-                  {item.nazev}
-                </Title>
-                <Text c="var(--mantine-color-text)" fw={600} mt={2}>
-                  {item.free ? "Zdarma" : `${item.cena.toLocaleString("cs-CZ")} Kč`}
-                </Text>
-              </Link>
-
-              <Group justify="flex-end" gap={6} mt={12}>
+            <Stack gap={8}>
+              <InzeratCard
+                id={item.id}
+                nazev={item.nazev}
+                foto={item.foto}
+                kategorie={item.kategorie}
+                stav={item.stav}
+                stavZbozi={item.stavZbozi}
+                cena={item.cena}
+                free={item.free}
+              />
+              {/* Dvoustupňové mazání — první klik zobrazí potvrzení, teprve druhý smaže.
+                  Zabraňuje náhodným smazáním, zejména na mobilu kde je "Smazat" lehce odklepnutelné. */}
+              <Group gap={6} wrap="nowrap" grow>
                 {!isConfirming ? (
                   <>
-                    <ActionIcon
-                      component={Link}
-                      href={`/inzeraty/${item.id}/upravit`}
-                      variant="light"
-                      color="blue"
-                      aria-label="Upravit"
-                    >
-                      <Edit3 size={16} />
-                    </ActionIcon>
-                    <ActionIcon variant="light" color="red" aria-label="Smazat" onClick={() => setConfirmId(item.id)}>
-                      <Trash2 size={16} />
-                    </ActionIcon>
+                    <ActionButton
+                      href={`/inzeraty/${item.id}/upravit`} // href místo onClick = přechod na stránku úpravy
+                      icon={<Edit3 size={14} />}
+                      label="Upravit"
+                    />
+                    <ActionButton
+                      icon={<Trash2 size={14} />}
+                      label="Smazat"
+                      onClick={() => setConfirmId(item.id)} // první klik — jen zobrazí potvrzení
+                      tint="danger"
+                    />
                   </>
                 ) : (
                   <>
-                    <Text size="xs" c="dimmed">
-                      Opravdu smazat?
-                    </Text>
-                    <ActionIcon
-                      variant="default"
-                      aria-label="Zrušit"
-                      onClick={() => setConfirmId(null)}
+                    <ActionButton
+                      label="Zrušit"
+                      onClick={() => setConfirmId(null)} // zruší potvrzovací mód
                       disabled={!!isDeleting}
-                    >
-                      <span style={{ fontSize: 16 }}>×</span>
-                    </ActionIcon>
-                    <ActionIcon
-                      variant="filled"
-                      color="red"
-                      aria-label="Potvrdit smazání"
-                      onClick={() => handleDelete(item.id)}
-                      loading={!!isDeleting}
-                    >
-                      <Trash2 size={16} />
-                    </ActionIcon>
+                    />
+                    <ActionButton
+                      icon={<Trash2 size={14} />}
+                      label={isDeleting ? "Mažu…" : "Opravdu smazat"}
+                      onClick={() => handleDelete(item.id)} // druhý klik — skutečné smazání
+                      tint="primary"
+                      disabled={!!isDeleting}
+                    />
                   </>
                 )}
               </Group>
-            </Card>
+            </Stack>
           </motion.div>
         );
       })}
     </AnimatePresence>
+  );
+}
+
+type Tint = "default" | "danger" | "primary";
+
+// Polymorfní tlačítko — renderuje se jako <Link> (navigace) nebo <button> (akce) podle toho, jestli dostane href.
+// Sdílí stejný vizuální styl, takže "Upravit" a "Smazat" vypadají konzistentně.
+function ActionButton({
+  href,
+  icon,
+  label,
+  onClick,
+  disabled,
+  tint = "default",
+}: {
+  href?: string;
+  icon?: React.ReactNode;
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  tint?: Tint;
+}) {
+  const bg = tint === "primary" ? ORANGE : CARD;
+  const color = tint === "primary" ? BURNT : tint === "danger" ? ORANGE : INK; // danger = oranžový text (varování)
+  const sharedStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    padding: "8px 10px",
+    background: bg,
+    color,
+    border: `2px solid ${INK}`,
+    borderRadius: 0,
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontFamily: MONO_STACK,
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    textDecoration: "none",
+    whiteSpace: "nowrap",
+    opacity: disabled ? 0.6 : 1,
+    transition: "background-color 0.15s",
+    width: "100%",
+  };
+  const hoverHandlers = {
+    onMouseEnter: (e: React.MouseEvent<HTMLAnchorElement | HTMLButtonElement>) => {
+      if (disabled || tint === "primary") return;
+      e.currentTarget.style.background = CREAM;
+    },
+    onMouseLeave: (e: React.MouseEvent<HTMLAnchorElement | HTMLButtonElement>) => {
+      if (disabled || tint === "primary") return;
+      e.currentTarget.style.background = bg;
+    },
+  };
+
+  // Pokud má href, renderujeme jako Next.js Link — správné SEO, prefetching, router navigace.
+  if (href) {
+    return (
+      <Link href={href} style={sharedStyle} {...hoverHandlers}>
+        {icon}
+        <span>{label}</span>
+      </Link>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} style={sharedStyle} {...hoverHandlers}>
+      {icon}
+      <span>{label}</span>
+    </button>
   );
 }

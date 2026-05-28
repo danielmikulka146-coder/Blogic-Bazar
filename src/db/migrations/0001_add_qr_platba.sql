@@ -1,1 +1,0 @@
-ALTER TABLE `inzeraty` ADD `qrPlatba` integer DEFAULT false NOT NULL;

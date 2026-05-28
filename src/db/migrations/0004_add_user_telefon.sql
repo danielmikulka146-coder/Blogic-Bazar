@@ -1,0 +1,2 @@
+ALTER TABLE `users` ADD `telefon` text;
+ALTER TABLE `users` ADD `telefonPrefix` text;

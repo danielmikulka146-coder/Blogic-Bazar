@@ -5,18 +5,21 @@ import path from "node:path";
 export type UploadedFoto = {
   filename: string;
   webPath: string;
+  contentType: string;
   size: number;
   uploadedAt: number;
 };
 
 type Session = {
   key: string;
+  userId: number;
   createdAt: number;
   fotky: UploadedFoto[];
   mobileConnected: boolean;
+  closed: boolean;
 };
 
-const TTL_MS = 60 * 60 * 1000;
+const TTL_MS = 20 * 60 * 1000;
 
 declare global {
   var __uploadSessions: Map<string, Session> | undefined;
@@ -26,7 +29,11 @@ const sessions: Map<string, Session> = globalThis.__uploadSessions ?? new Map();
 globalThis.__uploadSessions = sessions;
 
 function tmpDir(key: string) {
-  return path.join(process.cwd(), "public", "uploads", "tmp", key);
+  return path.join(process.cwd(), ".tmp", "uploads", key);
+}
+
+function previewPath(key: string, filename: string) {
+  return `/api/upload-session/${key}/foto/${encodeURIComponent(filename)}`;
 }
 
 function purgeExpired() {
@@ -39,10 +46,10 @@ function purgeExpired() {
   }
 }
 
-export function createSession(): Session {
+export function createSession(userId: number): Session {
   purgeExpired();
   const key = crypto.randomBytes(12).toString("base64url");
-  const session: Session = { key, createdAt: Date.now(), fotky: [], mobileConnected: false };
+  const session: Session = { key, userId, createdAt: Date.now(), fotky: [], mobileConnected: false, closed: false };
   sessions.set(key, session);
   return session;
 }
@@ -66,7 +73,8 @@ export async function addFoto(key: string, file: File): Promise<UploadedFoto | n
 
   const foto: UploadedFoto = {
     filename,
-    webPath: `/uploads/tmp/${key}/${filename}`,
+    webPath: previewPath(key, filename),
+    contentType: file.type || "application/octet-stream",
     size: buffer.byteLength,
     uploadedAt: Date.now(),
   };
@@ -86,10 +94,38 @@ export async function consumeSession(key: string): Promise<{ filePath: string; w
   return files;
 }
 
+export function getSessionFile(
+  key: string,
+  filename: string,
+  userId?: number,
+): { filePath: string; foto: UploadedFoto } | null {
+  const session = getSession(key);
+  if (!session) return null;
+  if (userId !== undefined && session.userId !== userId) return null;
+  if (path.basename(filename) !== filename) return null;
+
+  const foto = session.fotky.find((f) => f.filename === filename);
+  if (!foto) return null;
+
+  return {
+    filePath: path.join(tmpDir(key), filename),
+    foto,
+  };
+}
+
 export function setMobileConnected(key: string): boolean {
   const session = getSession(key);
   if (!session) return false;
+  if (session.closed) return false;
   session.mobileConnected = true;
+  return true;
+}
+
+export function closeSession(key: string, userId: number): boolean {
+  const session = getSession(key);
+  if (!session) return false;
+  if (session.userId !== userId) return false;
+  session.closed = true;
   return true;
 }
 
