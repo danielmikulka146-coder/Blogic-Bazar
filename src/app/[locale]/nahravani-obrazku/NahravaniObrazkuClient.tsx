@@ -6,7 +6,7 @@
 import { Alert, Badge, Box, Button, Group, Image, Paper, Progress, Stack, Text, Title } from "@mantine/core";
 import { Camera, CheckCircle2, ImageIcon, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { resizeImageIfLarger } from "@/lib/clientImageResize"; // komprese před uploadem — šetří data i čas
+import { compressImageToWebp } from "@/lib/clientImageResize"; // komprese do WebP před uploadem — šetří data i čas
 
 // Stav jedné fotky v seznamu — union type zajistí, že status může být jen tyto 4 hodnoty.
 type UploadedItem = {
@@ -97,7 +97,7 @@ export default function NahravaniObrazkuClient({ sessionKey }: { sessionKey: str
         const itemId = newItems[i].id;
         try {
           // Před uploadem zmenšíme fotku na rozumné rozlišení — originály z telefonu mohou být 12+ MP.
-          const file = await resizeImageIfLarger(original);
+          const file = await compressImageToWebp(original);
           const fd = new FormData();
           fd.append("foto", file);
           // Nahrání jedné fotky na server — server ji uloží do dočasné session složky.

@@ -30,7 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/infrastructure/AuthProvider";
 import { PhoneInput } from "@/components/ui/PhoneInput";
 import { useRouter } from "@/i18n/navigation";
-import { resizeImageIfLarger } from "@/lib/clientImageResize";
+import { compressImageToWebp } from "@/lib/clientImageResize";
 import { defaultPhoneCountry, formatPhoneDigits } from "@/lib/phoneCountries";
 import { odstranitInzerat } from "../inzeraty/owner-actions";
 import { upravitInzerat, vytvorInzerat } from "./actions";
@@ -73,6 +73,8 @@ type FotoItem = {
   remotePath?: string;
   /** Cesta v `/public/inzeraty/{id}` u fotek načtených z DB v edit režimu. */
   existingPath?: string;
+  /** true dokud na pozadí běží klientská komprese do WebP. */
+  processing?: boolean;
 };
 
 /** Rozdělí uložené tel. číslo "+420 123 456 789" na prefix a vlastní číslo. */
@@ -121,6 +123,20 @@ function SortableThumbnail({ item, onRemove, isFirst }: { item: FotoItem; onRemo
         draggable={false}
         style={{ width: "100%", height: "100%", objectFit: "cover", userSelect: "none" }}
       />
+      {item.processing && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(26, 26, 26, 0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Loader size="sm" color="orange" />
+        </div>
+      )}
       {isFirst && (
         <Badge
           size="xs"
@@ -220,6 +236,10 @@ export default function NovyInzeratForm({ initialInzerat, initialFotky }: Props 
   );
   const fotkyRef = useRef(fotky);
   fotkyRef.current = fotky;
+
+  // Promisy běžící klientské komprese (klíč = id fotky). Při submitu na ně počkáme,
+  // aby se odeslaly už zmenšené WebP soubory, ne originály.
+  const compressionPromisesRef = useRef<Map<string, Promise<void>>>(new Map());
 
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
   const [uploadSessionKey, setUploadSessionKey] = useState<string | null>(null);
@@ -378,14 +398,40 @@ export default function NovyInzeratForm({ initialInzerat, initialFotky }: Props 
     },
   });
 
-  async function pridejFotky(dropped: File[]) {
-    const resized = await Promise.all(dropped.map((f) => resizeImageIfLarger(f)));
-    const nove: FotoItem[] = resized.map((file) => ({
+  function pridejFotky(dropped: File[]) {
+    // Thumbnaily ukážeme OKAMŽITĚ z originálu (žádné čekání na kompresi). Kompresi
+    // do WebP pak spustíme na pozadí a po dokončení nahradíme soubor i thumbnail.
+    const nove: FotoItem[] = dropped.map((file) => ({
       id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
       file,
       url: URL.createObjectURL(file),
+      processing: true,
     }));
     setFotky((prev) => [...prev, ...nove]);
+
+    for (const item of nove) {
+      const original = item.file;
+      if (!original) continue;
+      const p = (async () => {
+        try {
+          const compressed = await compressImageToWebp(original);
+          setFotky((prev) =>
+            prev.map((f) => {
+              if (f.id !== item.id) return f;
+              // Pokud komprese vytvořila menší WebP, prohodíme i náhledový blob URL.
+              if (compressed !== original) {
+                if (f.url.startsWith("blob:")) URL.revokeObjectURL(f.url);
+                return { ...f, file: compressed, url: URL.createObjectURL(compressed), processing: false };
+              }
+              return { ...f, processing: false };
+            }),
+          );
+        } finally {
+          compressionPromisesRef.current.delete(item.id);
+        }
+      })();
+      compressionPromisesRef.current.set(item.id, p);
+    }
   }
 
   function odeberFotku(id: string) {
@@ -493,6 +539,11 @@ export default function NovyInzeratForm({ initialInzerat, initialFotky }: Props 
 
   async function handleSubmit(values: typeof form.values) {
     submittingRef.current = true;
+
+    // Počkáme na doběhnutí klientské komprese, ať odešleme zmenšené WebP, ne originály.
+    // Čteme z fotkyRef.current (ne z closure `fotky`), protože komprese stav mezitím změnila.
+    await Promise.all([...compressionPromisesRef.current.values()]);
+
     const formData = new FormData();
     for (const [key, val] of Object.entries(values)) {
       formData.append(key, String(val));
@@ -501,7 +552,7 @@ export default function NovyInzeratForm({ initialInzerat, initialFotky }: Props 
     // Pošli pořadí fotek + soubory v tom samém pořadí, ve kterém se objevují
     // v `fotky[]`. Server pak z `fotoEntry` zpětně poskládá pořadí kombinací
     // s `foto` (File queue) a kontrolou existencí.
-    for (const item of fotky) {
+    for (const item of fotkyRef.current) {
       if (item.existingPath) {
         formData.append("fotoEntry", `existing:${item.existingPath}`);
       } else if (item.file) {

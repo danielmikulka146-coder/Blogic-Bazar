@@ -1332,6 +1332,7 @@ function InzerentCard({
   const [chatPending, setChatPending] = useState(false);
 
   const handleChat = useCallback(async () => {
+    if (chatPending) return; // pojistka proti dvojkliku — neposílej druhý request
     setChatPending(true);
     try {
       const res = await fetch("/api/chat/conversations", {
@@ -1339,13 +1340,18 @@ function InzerentCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ inzeratId }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        setChatPending(false); // chyba → znovu povol tlačítko
+        return;
+      }
       const data = (await res.json()) as { id: number };
+      // Úspěch: tlačítko necháme zablokované, protože hned naviguje pryč na chat.
+      // (Reset pendingu by ho na okamžik znovu zpřístupnil před přechodem.)
       router.push(`/zpravy/${data.id}`);
-    } finally {
+    } catch {
       setChatPending(false);
     }
-  }, [inzeratId, router]);
+  }, [inzeratId, router, chatPending]);
 
   return (
     <motion.div
