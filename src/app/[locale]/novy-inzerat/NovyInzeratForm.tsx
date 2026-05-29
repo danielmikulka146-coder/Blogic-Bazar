@@ -207,7 +207,7 @@ const INPUT_FIELD_STYLES = {
 export default function NovyInzeratForm({ initialInzerat, initialFotky }: Props = {}) {
   const router = useRouter();
   const locale = useLocale();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refresh: refreshAuth } = useAuth();
   const isEdit = initialInzerat != null;
   const initialTelefon = useMemo(() => splitStoredTelefon(initialInzerat?.telefon), [initialInzerat?.telefon]);
 
@@ -238,7 +238,7 @@ export default function NovyInzeratForm({ initialInzerat, initialFotky }: Props 
   useEffect(() => {
     return () => {
       for (const f of fotkyRef.current) {
-        if (f.file) URL.revokeObjectURL(f.url);
+        if (f.url.startsWith("blob:")) URL.revokeObjectURL(f.url);
       }
     };
   }, []);
@@ -302,14 +302,19 @@ export default function NovyInzeratForm({ initialInzerat, initialFotky }: Props 
         const novinky = data.fotky.filter((f) => !seenRemoteRef.current.has(f.webPath));
         if (novinky.length > 0) {
           for (const n of novinky) seenRemoteRef.current.add(n.webPath);
-          setFotky((prev) => [
-            ...prev,
-            ...novinky.map((n) => ({
-              id: `remote-${n.filename}`,
-              url: n.webPath,
-              remotePath: n.webPath,
-            })),
-          ]);
+          // Stáhni každou fotku jako blob ihned — tím se vyhneme opakovaným auth+disk
+          // requestům při každém re-renderu a obrázkům, které zmizí po expiraci session.
+          const items = await Promise.all(
+            novinky.map(async (n) => {
+              let displayUrl = n.webPath;
+              try {
+                const resp = await fetch(n.webPath);
+                if (resp.ok) displayUrl = URL.createObjectURL(await resp.blob());
+              } catch {}
+              return { id: `remote-${n.filename}`, url: displayUrl, remotePath: n.webPath };
+            }),
+          );
+          setFotky((prev) => [...prev, ...items]);
           if (phoneModalOpenRef.current) {
             setPhoneModalOpen(false);
           }
@@ -386,7 +391,7 @@ export default function NovyInzeratForm({ initialInzerat, initialFotky }: Props 
   function odeberFotku(id: string) {
     setFotky((prev) => {
       const target = prev.find((f) => f.id === id);
-      if (target?.file) URL.revokeObjectURL(target.url);
+      if (target?.url.startsWith("blob:")) URL.revokeObjectURL(target.url);
       // Pro session upload: smaž ji rovnou ze session, aby nezůstávala na disku.
       // Pro existující fotku: jen odeber ze stavu — server ji při save smaže.
       if (target?.remotePath && uploadSessionKey) {
@@ -513,9 +518,13 @@ export default function NovyInzeratForm({ initialInzerat, initialFotky }: Props 
     if (isEdit && initialInzerat) {
       formData.append("id", String(initialInzerat.id));
       await upravitInzerat(formData);
+      // Server po uložení zapsal telefon i do users.* — promítneme to do auth
+      // contextu, ať se příští formulář prefilluje bez nutnosti odhlášení.
+      await refreshAuth();
       router.push(`/inzeraty/${initialInzerat.id}`);
     } else {
       await vytvorInzerat(formData);
+      await refreshAuth();
       router.push("/inzeraty");
     }
   }

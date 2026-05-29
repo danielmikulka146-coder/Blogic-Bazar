@@ -3,7 +3,6 @@
 import { AppShell, Container, Group } from "@mantine/core";
 import type { PropsWithChildren } from "react";
 import { HeaderSearch } from "@/components/layout/Header";
-import { PageLogo } from "@/components/layout/PageLogo";
 
 const BODY_MAX_WIDTH = 1280;
 

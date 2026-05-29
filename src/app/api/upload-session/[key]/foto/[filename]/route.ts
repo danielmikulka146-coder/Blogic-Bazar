@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ key: st
   const buffer = await fs.readFile(match.filePath);
   return new Response(new Uint8Array(buffer), {
     headers: {
-      "Cache-Control": "private, no-store",
+      "Cache-Control": "private, max-age=1200",
       "Content-Type": match.foto.contentType,
     },
   });

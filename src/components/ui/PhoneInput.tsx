@@ -205,13 +205,13 @@ export function PhoneInput({
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -4 }}
+            initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
+            exit={{ opacity: 0, y: 4 }}
             transition={{ duration: 0.16, ease: "easeOut" }}
             style={{
               position: "absolute",
-              top: "calc(100% + 4px)",
+              bottom: "calc(100% + 4px)",
               left: 0,
               width: 320,
               maxWidth: "100%",
@@ -219,10 +219,9 @@ export function PhoneInput({
               border: `2px solid ${INK}`,
               borderRadius: 0,
               zIndex: 200,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+              boxShadow: "0 -8px 24px rgba(0,0,0,0.12)",
               display: "flex",
               flexDirection: "column",
-              maxHeight: 320,
             }}
           >
             <div
@@ -253,7 +252,7 @@ export function PhoneInput({
                 }}
               />
             </div>
-            <div style={{ overflowY: "auto", maxHeight: 260 }}>
+            <div style={{ overflowY: "auto", maxHeight: 180 }}>
               {filtered.length === 0 ? (
                 <div
                   style={{

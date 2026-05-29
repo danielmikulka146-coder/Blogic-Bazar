@@ -116,7 +116,7 @@ export function HeaderSearch() {
           style={{
             position: "absolute",
             bottom: -40,
-            right: 420,
+            right: 397,
             pointerEvents: "none",
             zIndex: 1,
           }}

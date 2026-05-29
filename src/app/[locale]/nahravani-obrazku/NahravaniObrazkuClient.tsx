@@ -23,6 +23,8 @@ export default function NahravaniObrazkuClient({ sessionKey }: { sessionKey: str
   const [items, setItems] = useState<UploadedItem[]>([]);
   const [sessionOk, setSessionOk] = useState<boolean | null>(null); // null = ještě se načítá
   const [sessionClosed, setSessionClosed] = useState(false); // PC zavřel formulář → blokujeme nové uploady
+  const [submitted, setSubmitted] = useState(false); // inzerát byl z PC odeslán → zobrazíme úspěch
+  const submittedAlertedRef = useRef(false); // aby alert vyskočil jen jednou
   // Dvě separátní ref tlačítka — jedno otevře fotoaparát, druhé galerii.
   // Skrytý <input> voláme programově přes .click(), protože vlastní Button vypadá lépe.
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -30,25 +32,48 @@ export default function NahravaniObrazkuClient({ sessionKey }: { sessionKey: str
 
   // Při načtení stránky ověříme, jestli session existuje a je stále otevřená.
   // Zároveň oznámíme serveru, že jsme připojeni (PC pak ví, že telefon je online).
+  // Session check s retry loopem — čeká až 30s než zobrazí chybu.
+  // Důvod: desktop vytváří session až po načtení auth stavu (~300ms), mobil může
+  // přijít dřív. Stačí pár sekund navíc a session už existuje.
   useEffect(() => {
     if (!sessionKey) {
       setSessionOk(false);
       return;
     }
-    fetch(`/api/upload-session/${sessionKey}`)
-      .then(async (r) => {
-        setSessionOk(r.ok); // false = session neexistuje nebo vypršela
+    let cancelled = false;
+    const DEADLINE = Date.now() + 30_000;
+    const tryCheck = async () => {
+      try {
+        const r = await fetch(`/api/upload-session/${sessionKey}`);
+        if (cancelled) return;
         if (r.ok) {
-          const data = (await r.json()) as { closed?: boolean };
+          const data = (await r.json()) as { closed?: boolean; submitted?: boolean };
+          setSessionOk(true);
           setSessionClosed(data.closed === true);
+          if (data.submitted === true) {
+            setSubmitted(true);
+            submittedAlertedRef.current = true; // stránka se načetla už po odeslání → alert nemá smysl
+          }
           if (!data.closed) {
-            // Oznámíme serveru "telefon je připojený" — PC si to může zobrazit jako status.
             fetch(`/api/upload-session/${sessionKey}/connected`, { method: "POST" }).catch(() => {});
           }
+          return;
         }
-      })
-      .catch(() => setSessionOk(false));
-  }, [sessionKey]); // [] se sessionKey = spustí se jen jednou při načtení stránky
+      } catch {
+        if (cancelled) return;
+      }
+      if (cancelled || Date.now() >= DEADLINE) {
+        if (!cancelled) setSessionOk(false);
+        return;
+      }
+      await new Promise((res) => setTimeout(res, 1000));
+      if (!cancelled) tryCheck();
+    };
+    tryCheck();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionKey]);
 
   const uploadFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -107,7 +132,14 @@ export default function NahravaniObrazkuClient({ sessionKey }: { sessionKey: str
       try {
         const res = await fetch(`/api/upload-session/${sessionKey}`, { cache: "no-store" });
         if (!res.ok) return;
-        const data = (await res.json()) as { fotky: { webPath: string }[]; closed?: boolean };
+        const data = (await res.json()) as { fotky: { webPath: string }[]; closed?: boolean; submitted?: boolean };
+        if (data.submitted && !submittedAlertedRef.current) {
+          // Inzerát byl z PC odeslán — upozorníme uživatele a zakážeme nahrávání.
+          submittedAlertedRef.current = true;
+          setSubmitted(true);
+          setSessionClosed(true);
+          window.alert("Inzerát byl odeslán z počítače. Nahrávání fotek je ukončené.");
+        }
         if (data.closed) {
           setSessionClosed(true); // PC zavřel formulář → blokujeme UI
         }
@@ -123,12 +155,13 @@ export default function NahravaniObrazkuClient({ sessionKey }: { sessionKey: str
         /* ignoruj síťové chyby — příští tick to zkusí znovu */
       }
     };
+    tick();
     const interval = setInterval(() => {
-      if (!stopped) tick(); // stopped guard = zabrání spuštění po unmountu
-    }, 1000); // 1000ms = 1 sekunda — dostatečně rychlé pro "real-time" pocit
+      if (!stopped) tick();
+    }, 500);
     return () => {
       stopped = true;
-      clearInterval(interval); // cleanup = zastavíme polling při odchodu ze stránky
+      clearInterval(interval);
     };
   }, [sessionKey, sessionOk]);
 
@@ -160,10 +193,16 @@ export default function NahravaniObrazkuClient({ sessionKey }: { sessionKey: str
           </Text>
         </Stack>
 
-        {sessionClosed && (
-          <Alert color="orange" title="Nahrávání je ukončené">
-            Otevři na počítači nový formulář a naskenuj nový QR kód.
+        {submitted ? (
+          <Alert color="green" icon={<CheckCircle2 size={18} />} title="Inzerát byl odeslán">
+            Inzerát byl z počítače odeslán. Nahrávání fotek je ukončené.
           </Alert>
+        ) : (
+          sessionClosed && (
+            <Alert color="orange" title="Nahrávání je ukončené">
+              Otevři na počítači nový formulář a naskenuj nový QR kód.
+            </Alert>
+          )
         )}
 
         {/* Skrytý input pro fotoaparát — capture="environment" = zadní kamera (ne selfie). */}

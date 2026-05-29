@@ -3,6 +3,7 @@
 "use client";
 
 import { GoogleOAuthProvider } from "@react-oauth/google";
+import { useRouter } from "next/navigation";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 // Tvar dat přihlášeného uživatele — stejná struktura co vrací /api/auth/me a /api/auth/login.
@@ -30,6 +31,7 @@ const Ctx = createContext<AuthValue | null>(null);
 function InnerAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true); // true dokud se nenačte stav z cookie
+  const router = useRouter();
 
   // Zkontroluje session cookie na serveru a načte aktuálního uživatele.
   const refresh = useCallback(async () => {
@@ -54,23 +56,37 @@ function InnerAuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   // Zavolá login endpoint s Google credential tokenem a uloží uživatele do stavu.
-  const signInWithCredential = useCallback(async (credential: string) => {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ credential }),
-    });
-    if (!res.ok) {
-      throw new Error("Přihlášení selhalo");
-    }
-    const data = (await res.json()) as { user: AuthUser };
-    setUser(data.user); // okamžitě aktualizujeme UI — žádný reload stránky
-  }, []);
+  const signInWithCredential = useCallback(
+    async (credential: string) => {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential }),
+      });
+      if (!res.ok) {
+        throw new Error("Přihlášení selhalo");
+      }
+      const data = (await res.json()) as { user: AuthUser };
+      setUser(data.user);
+
+      // Return-URL pattern: pokud je v URL ?next=/cs/zpravy/5, po loginu tam přesměrujeme.
+      // Bezpečnostní check: next musí být relativní cesta (začíná "/"), aby nešlo přesměrovat na //evil.com.
+      const next = new URL(window.location.href).searchParams.get("next");
+      if (next?.startsWith("/") && !next.startsWith("//")) {
+        window.location.href = next; // hard navigation = server re-render s novou session cookie
+        return;
+      }
+
+      router.refresh(); // re-renderuje server komponenty s novou session (při změně účtu)
+    },
+    [router],
+  );
 
   const signOut = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" }); // smaže session cookie na serveru
-    setUser(null); // okamžitě skryjeme uživatelské UI
-  }, []);
+    setUser(null);
+    router.refresh(); // re-renderuje server komponenty bez aktivní session
+  }, [router]);
 
   // useMemo = objekt se nevytváří znovu při každém renderu.
   // Bez toho by každý render způsobil re-render všech komponent používajících useAuth().

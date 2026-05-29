@@ -63,4 +63,27 @@ if (!hasInzeratColumn("soldAt")) {
   sqlite.exec("ALTER TABLE inzeraty ADD COLUMN soldAt INTEGER");
 }
 
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    inzeratId INTEGER NOT NULL REFERENCES inzeraty(id) ON DELETE CASCADE,
+    buyerId INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    sellerId INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    createdAt INTEGER NOT NULL,
+    lastMessageAt INTEGER NOT NULL,
+    buyerRead INTEGER NOT NULL DEFAULT 1,
+    sellerRead INTEGER NOT NULL DEFAULT 0,
+    notificationSentAt INTEGER,
+    UNIQUE(inzeratId, buyerId)
+  );
+
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    conversationId INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    senderId INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    createdAt INTEGER NOT NULL
+  );
+`);
+
 export const db = drizzle(sqlite, { schema });

@@ -9,7 +9,6 @@ import {
   Edit3,
   Eye,
   Heart,
-  Mail,
   MessageSquare,
   Phone,
   Share2,
@@ -25,7 +24,7 @@ import { useAuth } from "@/components/infrastructure/AuthProvider";
 import { useFilterState } from "@/components/infrastructure/FilterStateProvider";
 import { Avatar } from "@/components/layout/AuthPill";
 import { SaveButton } from "@/components/ui/SaveButton";
-import { Link } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { odstranitInzerat } from "../owner-actions";
 import { oznacitZaplaceno, pridatZobrazeni, toggleProdano, toggleRezervace, ukoncitProhlizeni } from "./actions";
 import { FotoGalerie } from "./FotoGalerie";
@@ -440,11 +439,27 @@ export function InzeratDetailClient({
   savedCount: number;
 }) {
   const { user } = useAuth();
+  const router = useRouter();
   // Lokální kopie stavu — po akci (rezervace/prodej) aktualizujeme UI okamžitě bez reload stránky.
   const [stav, setStav] = useState(inzerat.stav);
   const [reservedByMe, setReservedByMe] = useState(isReservedByMe);
   const [paymentDone, setPaymentDone] = useState(inzerat.paymentDone);
   const [buyerIsMe, setBuyerIsMe] = useState(isBuyer);
+
+  // Synchronizace lokálního stavu s novými server props po router.refresh() (přihlášení/odhlášení).
+  // useState ignoruje změny initialValue po prvním mountu — bez těchto efektů by stav zaostal.
+  useEffect(() => {
+    setReservedByMe(isReservedByMe);
+  }, [isReservedByMe]);
+  useEffect(() => {
+    setBuyerIsMe(isBuyer);
+  }, [isBuyer]);
+  useEffect(() => {
+    setPaymentDone(inzerat.paymentDone);
+  }, [inzerat.paymentDone]);
+  useEffect(() => {
+    setStav(inzerat.stav);
+  }, [inzerat.stav]);
   // useTransition = spustí async akci na pozadí, pending=true mezitím → UI lze deaktivovat (spinner/disabled).
   const [pending, startTransition] = useTransition();
   const [paymentOpen, setPaymentOpen] = useState(false); // otevřený modal s QR platbou
@@ -540,9 +555,9 @@ export function InzeratDetailClient({
   const handleDelete = useCallback(() => {
     startTransition(async () => {
       await odstranitInzerat(inzerat.id);
-      window.location.href = "/inzeraty";
+      router.push("/inzeraty");
     });
-  }, [inzerat.id]);
+  }, [inzerat.id, router]);
 
   // IntersectionObserver je efektivnější alternativa ke scroll listeneru —
   // prohlížeč sám sleduje, kdy element vstoupí/opustí viewport, bez zbytečných výpočtů.
@@ -787,7 +802,7 @@ export function InzeratDetailClient({
                 owner={owner}
                 telefon={inzerat.telefon}
                 showWriteButton={!isOwner && !!user}
-                mailSubject={`Inzerát: ${inzerat.nazev}`}
+                inzeratId={inzerat.id}
               />
             )}
           </Stack>
@@ -1299,21 +1314,39 @@ function NonOwnerActions({
 }
 
 /**
- * Karta inzerenta — avatar + jméno + INZERENT label + e-mail + telefon
- * + tlačítko "Napsat e-mail" na celé šířce uvnitř.
+ * Karta inzerenta — avatar + jméno + INZERENT label + telefon
+ * + tlačítko "Napsat zprávu" (otevře/vytvoří chat konverzaci).
  */
 function InzerentCard({
   owner,
   telefon,
   showWriteButton,
-  mailSubject,
+  inzeratId,
 }: {
   owner: Owner;
   telefon: string | null;
   showWriteButton: boolean;
-  mailSubject: string;
+  inzeratId: number;
 }) {
-  const mailto = `mailto:${owner.email}?subject=${encodeURIComponent(mailSubject)}`;
+  const router = useRouter();
+  const [chatPending, setChatPending] = useState(false);
+
+  const handleChat = useCallback(async () => {
+    setChatPending(true);
+    try {
+      const res = await fetch("/api/chat/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inzeratId }),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { id: number };
+      router.push(`/zpravy/${data.id}`);
+    } finally {
+      setChatPending(false);
+    }
+  }, [inzeratId, router]);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -1349,27 +1382,23 @@ function InzerentCard({
           </Stack>
         </Group>
 
-        <Stack gap={8}>
+        {telefon && (
           <Group gap={8} wrap="nowrap" align="center">
-            <Mail size={14} style={{ flexShrink: 0, color: "#888780" }} />
-            <Text c="#1a1a1a" size="xs" fw={500} style={{ wordBreak: "break-all" }}>
-              {owner.email}
+            <Phone size={14} style={{ flexShrink: 0, color: "#888780" }} />
+            <Text c="#1a1a1a" size="xs" fw={500}>
+              {formatPhone(telefon)}
             </Text>
           </Group>
-          {telefon && (
-            <Group gap={8} wrap="nowrap" align="center">
-              <Phone size={14} style={{ flexShrink: 0, color: "#888780" }} />
-              <Text c="#1a1a1a" size="xs" fw={500}>
-                {formatPhone(telefon)}
-              </Text>
-            </Group>
-          )}
-        </Stack>
+        )}
 
         {showWriteButton && (
-          <a href={mailto} style={{ textDecoration: "none", display: "block" }}>
-            <DarkButton icon={<Mail size={16} />} label="Napsat e-mail" variant="light" />
-          </a>
+          <DarkButton
+            icon={<MessageSquare size={16} />}
+            label={chatPending ? "Otevírám chat…" : "Napsat zprávu"}
+            variant="light"
+            onClick={handleChat}
+            pending={chatPending}
+          />
         )}
       </Stack>
     </motion.div>

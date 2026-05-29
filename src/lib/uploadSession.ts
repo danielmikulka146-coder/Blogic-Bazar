@@ -17,6 +17,7 @@ type Session = {
   fotky: UploadedFoto[];
   mobileConnected: boolean;
   closed: boolean;
+  submitted: boolean; // true = inzerát byl z PC odeslán (mobil zobrazí upozornění)
 };
 
 const TTL_MS = 20 * 60 * 1000;
@@ -49,7 +50,15 @@ function purgeExpired() {
 export function createSession(userId: number): Session {
   purgeExpired();
   const key = crypto.randomBytes(12).toString("base64url");
-  const session: Session = { key, userId, createdAt: Date.now(), fotky: [], mobileConnected: false, closed: false };
+  const session: Session = {
+    key,
+    userId,
+    createdAt: Date.now(),
+    fotky: [],
+    mobileConnected: false,
+    closed: false,
+    submitted: false,
+  };
   sessions.set(key, session);
   return session;
 }
@@ -125,6 +134,17 @@ export function closeSession(key: string, userId: number): boolean {
   const session = getSession(key);
   if (!session) return false;
   if (session.userId !== userId) return false;
+  session.closed = true;
+  return true;
+}
+
+// Inzerát byl odeslán → session uzavřeme a označíme jako "submitted".
+// Mobil díky tomu při dalším pollu pozná, že má zobrazit upozornění a zakázat nahrávání.
+export function markSessionSubmitted(key: string, userId: number): boolean {
+  const session = getSession(key);
+  if (!session) return false;
+  if (session.userId !== userId) return false;
+  session.submitted = true;
   session.closed = true;
   return true;
 }

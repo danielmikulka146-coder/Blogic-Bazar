@@ -122,9 +122,14 @@ export function FotoGalerie({ fotky, nazev }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {/* Hlavní 4:3 obrázek */}
-      <button
-        type="button"
+      {/* biome-ignore lint/a11y/useSemanticElements: obsahuje vnořená GlassPill tlačítka, nemůže být <button> */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setLightbox(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") setLightbox(true);
+        }}
         aria-label="Zobrazit fotku v plné velikosti"
         style={{
           position: "relative",
@@ -184,7 +189,7 @@ export function FotoGalerie({ fotky, nazev }: Props) {
             </GlassPill>
           </>
         )}
-      </button>
+      </div>
 
       {/* Thumbnaily — také 4:3 */}
       {hasMany && (
