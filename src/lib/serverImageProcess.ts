@@ -3,39 +3,52 @@ import sharp from "sharp";
 
 const MAX_DIMENSION = 2500;
 const WEBP_QUALITY = 82;
-// Animovaný GIF má width × height × počet snímků pixelů — větší gify snadno
+// Animovaný obrázek má width × height × počet snímků pixelů — větší animace snadno
 // překročí výchozí limit sharpu (~268 Mpx) a konverze spadne. Zvedneme limit,
 // aby se zpracovaly i delší animace.
 const MAX_PIXELS = 1_000_000_000;
 
 export type ProcessedImage = { buffer: Buffer; ext: "webp" | "gif" };
 
-// GIF poznáme podle magických bajtů "GIF" (GIF87a / GIF89a) — spolehlivější
-// než přípona souboru, která může chybět nebo lhát.
-function isGif(buf: Buffer): boolean {
-  return buf.length >= 3 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46;
-}
-
 /**
  * Zpracuje vstupní obrázek (buffer nebo cesta k souboru) pro uložení k inzerátu.
- * GIF zachová jako GIF (kvůli animaci) a jen ho zmenší; ostatní formáty převede
- * do WebP. Vrací výsledný buffer i správnou příponu.
+ *
+ * Prioritou je WebP — i animované GIFy převádíme na animovaný WebP (výrazně menší
+ * soubor a `next/image` ho zvládne optimalizovat). GIF necháme jen jako záchranný
+ * fallback, kdyby WebP konverze animace selhala.
  */
 export async function processImage(input: Buffer | string): Promise<ProcessedImage> {
   const buf = typeof input === "string" ? await fs.readFile(input) : input;
 
-  if (isGif(buf)) {
-    // GIF nepřevádíme na WebP — animace by se u větších souborů rozbila / konverze
-    // by spadla. Zmenšíme rozměry, ale necháme formát GIF.
+  // Zjistíme počet snímků — pages > 1 znamená animaci (GIF nebo animovaný WebP).
+  let animated = false;
+  try {
+    const meta = await sharp(buf, { limitInputPixels: MAX_PIXELS }).metadata();
+    animated = (meta.pages ?? 1) > 1;
+  } catch {
+    // metadata nešla přečíst — zkusíme zpracovat jako statický obrázek níže
+  }
+
+  if (animated) {
+    // Animaci zachováme, ale jako animovaný WebP. Resize zmenší rozměry; tím se
+    // i z obřích animací (původně desítky MB) stane rozumně velký soubor.
     try {
       const out = await sharp(buf, { animated: true, limitInputPixels: MAX_PIXELS })
         .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: "inside", withoutEnlargement: true })
-        .gif()
+        .webp({ quality: WEBP_QUALITY, effort: 4 })
         .toBuffer();
-      return { buffer: out, ext: "gif" };
+      return { buffer: out, ext: "webp" };
     } catch {
-      // Pokud i zmenšení selže (extrémně velký gif), uložíme originál beze změny.
-      return { buffer: buf, ext: "gif" };
+      // WebP konverze animace selhala — zkusíme aspoň zmenšený GIF.
+      try {
+        const out = await sharp(buf, { animated: true, limitInputPixels: MAX_PIXELS })
+          .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: "inside", withoutEnlargement: true })
+          .gif()
+          .toBuffer();
+        return { buffer: out, ext: "gif" };
+      } catch {
+        return { buffer: buf, ext: "gif" };
+      }
     }
   }
 

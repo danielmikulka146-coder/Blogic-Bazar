@@ -11,6 +11,7 @@ import { CompactFilterBar } from "@/components/ui/CompactFilterBar";
 import { FilterChip } from "@/components/ui/FilterChip";
 import { ReactiveCheckOption, ReactiveSeparator } from "@/components/ui/GlassDropdownPanel";
 import { PriceRangeControl } from "@/components/ui/PriceRangeControl";
+import { useRouter } from "@/i18n/navigation";
 import { InzeratCard } from "./InzeratCard";
 
 // Barvy jako konstanty — změna na jednom místě se projeví všude v souboru.
@@ -183,6 +184,15 @@ function SortChip({ sort, setSort }: { sort: SortOption; setSort: (s: SortOption
 export function InzeratyListClient({ data, initialKategorie }: Props) {
   // Z kontextu (FilterStateProvider) dostaneme search query z headeru a funkce pro vložení komponent do headeru.
   const { searchQuery, setHeaderSlot, setHeaderSlotActive } = useFilterState();
+  const router = useRouter();
+
+  // Auto-refresh každých 5 s — router.refresh() znovu načte data ze serveru (Server
+  // Component) bez plného reloadu stránky, takže filtry, scroll i stav zůstanou. Nové
+  // inzeráty / změny stavu se tak objeví bez nutnosti ručního obnovení.
+  useEffect(() => {
+    const interval = window.setInterval(() => router.refresh(), 5000);
+    return () => window.clearInterval(interval);
+  }, [router]);
 
   // Stav filtrů — každý useState je jedna nezávislá hodnota uložená v paměti prohlížeče.
   // Při změně kteréhokoli stavu se komponenta znovu vykreslí.

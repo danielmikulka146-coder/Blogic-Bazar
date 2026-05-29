@@ -17,30 +17,42 @@ export async function POST(req: NextRequest) {
   if (!inzerat.userId) return NextResponse.json({ error: "Inzerát nemá majitele" }, { status: 400 });
   if (inzerat.userId === user.id) return NextResponse.json({ error: "Nemůžeš psát sám sobě" }, { status: 400 });
 
-  // Najdi existující konverzaci mezi tímto kupcem a prodejcem pro tento inzerát
-  const existing = db
-    .select()
-    .from(conversations)
-    .where(and(eq(conversations.inzeratId, body.inzeratId), eq(conversations.buyerId, user.id)))
-    .get();
+  // Najdi existující konverzaci mezi tímto kupcem a prodejcem pro tento inzerát —
+  // jeden kupec má pro jeden inzerát vždy jen jednu konverzaci (žádné duplikáty).
+  const findExisting = () =>
+    db
+      .select()
+      .from(conversations)
+      .where(and(eq(conversations.inzeratId, body.inzeratId as number), eq(conversations.buyerId, user.id)))
+      .get();
 
+  const existing = findExisting();
   if (existing) return NextResponse.json({ id: existing.id });
 
   const now = Math.floor(Date.now() / 1000);
-  const [created] = await db
-    .insert(conversations)
-    .values({
-      inzeratId: body.inzeratId,
-      buyerId: user.id,
-      sellerId: inzerat.userId,
-      createdAt: now,
-      lastMessageAt: now,
-      buyerRead: true,
-      sellerRead: false,
-    })
-    .returning();
+  try {
+    const [created] = await db
+      .insert(conversations)
+      .values({
+        inzeratId: body.inzeratId,
+        buyerId: user.id,
+        sellerId: inzerat.userId,
+        createdAt: now,
+        lastMessageAt: now,
+        buyerRead: true,
+        sellerRead: false,
+      })
+      .returning();
 
-  return NextResponse.json({ id: created.id }, { status: 201 });
+    return NextResponse.json({ id: created.id }, { status: 201 });
+  } catch {
+    // Race condition: dva souběžné requesty (rychlý dvojklik) prošly oba kontrolou
+    // existence, první INSERT prošel, druhý narazil na UNIQUE(inzeratId, buyerId).
+    // Místo chyby vrátíme tu jednu konverzaci, co vznikla.
+    const afterRace = findExisting();
+    if (afterRace) return NextResponse.json({ id: afterRace.id });
+    return NextResponse.json({ error: "Konverzaci se nepodařilo vytvořit" }, { status: 500 });
+  }
 }
 
 // GET /api/chat/conversations — seznam konverzací přihlášeného uživatele

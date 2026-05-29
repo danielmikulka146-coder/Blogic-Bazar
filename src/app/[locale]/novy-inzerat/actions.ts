@@ -14,6 +14,23 @@ import { parsujFotky } from "@/lib/foto";
 import { processImage, withExt } from "@/lib/serverImageProcess"; // zpracování obrázků (WebP / GIF) na serveru
 import { dropSessionDir, getSessionFile, markSessionSubmitted } from "@/lib/uploadSession";
 
+// Web cesta k fotce inzerátu. Fyzicky leží v `public/inzeraty/{id}/`, ale servíruje
+// se přes route handler `/api/foto/...` (viz app/api/foto/[...path]) — proto cesty
+// v DB ukládáme s tímto prefixem.
+function fotoWebPath(id: number, filename: string): string {
+  return `/api/foto/${id}/${filename}`;
+}
+
+// Převede web cestu `/api/foto/{id}/{file}` zpět na absolutní cestu na disku.
+// Vrací null, pokud cesta nemá očekávaný tvar nebo obsahuje pokus o traversal.
+function fotoDiskPath(webPath: string): string | null {
+  const prefix = "/api/foto/";
+  if (!webPath.startsWith(prefix)) return null;
+  const segments = webPath.slice(prefix.length).split("/").filter(Boolean);
+  if (segments.length === 0 || segments.some((s) => s.includes(".."))) return null;
+  return path.join(process.cwd(), "public", "inzeraty", ...segments);
+}
+
 function remoteFilenameFromPath(webPath: string, uploadSessionKey: string): string | null {
   const prefix = `/api/upload-session/${uploadSessionKey}/foto/`;
   if (!webPath.startsWith(prefix)) return null;
@@ -87,7 +104,7 @@ async function processFotoEntries(opts: {
       const { buffer: processed, ext } = await processImage(buffer);
       const filename = withExt(`${Date.now()}-${file.name}`, ext);
       await fs.writeFile(path.join(dir, filename), processed);
-      out.push(`/inzeraty/${id}/${filename}`);
+      out.push(fotoWebPath(id, filename));
       continue;
     }
 
@@ -103,7 +120,7 @@ async function processFotoEntries(opts: {
         const filename = withExt(remoteFilename, ext);
         await fs.writeFile(path.join(dir, filename), processed);
         await fs.unlink(sessionFile.filePath).catch(() => {});
-        out.push(`/inzeraty/${id}/${filename}`);
+        out.push(fotoWebPath(id, filename));
       } catch {
         // konverze selhala — fotku přeskočíme
       }
@@ -216,6 +233,13 @@ export async function vytvorInzerat(formData: FormData) {
     telefonNumber: fields.telefonNumber,
     telefonPrefix: fields.telefonPrefix,
   });
+
+  // Bez revalidace by router.push("/inzeraty") zobrazil cachovaný seznam BEZ nového
+  // inzerátu — uživatel by ho viděl až po ručním refreshi. revalidatePath zneplatní
+  // cache seznamu i detailu, aby se nový inzerát (a jeho fotky) objevil okamžitě.
+  revalidatePath("/", "layout");
+
+  return { id };
 }
 
 /**
@@ -256,9 +280,8 @@ export async function upravitInzerat(formData: FormData) {
   const keptNewSet = new Set(newFotoPaths);
   for (const oldPath of existingFotky) {
     if (keptNewSet.has(oldPath)) continue; // fotka je stále v seznamu → zachovat
-    if (!oldPath.startsWith("/")) continue; // bezpečnostní check — nesmíme mazat absolutní systémové cesty
-    const segments = oldPath.replace(/^\/+/, "").split("/").filter(Boolean);
-    const abs = path.join(process.cwd(), "public", ...segments); // sestavení absolutní cesty k souboru
+    const abs = fotoDiskPath(oldPath); // /api/foto/{id}/{file} → public/inzeraty/{id}/{file}
+    if (!abs) continue; // neznámý tvar cesty — radši nemazat
     await fs.unlink(abs).catch(() => {});
   }
 
