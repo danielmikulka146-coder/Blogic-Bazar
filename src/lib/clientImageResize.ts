@@ -34,7 +34,7 @@ export async function resizeImageIfLarger(file: File, maxSize: number = MAX_DIME
     });
     if (!blob) return file;
 
-    const newName = file.name.replace(/\.[^.]+$/i, "") + ".jpg";
+    const newName = `${file.name.replace(/\.[^.]+$/i, "")}.jpg`;
     return new File([blob], newName, { type: "image/jpeg", lastModified: file.lastModified });
   } catch {
     return file;

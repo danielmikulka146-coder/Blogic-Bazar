@@ -11,8 +11,8 @@ import { db } from "@/db";
 import { inzeraty, users } from "@/db/schemas";
 import { requireUser } from "@/lib/auth"; // requireUser = getCurrentUser + hodí chybu pokud není přihlášen
 import { parsujFotky } from "@/lib/foto";
-import { imageToWebp, toWebpFilename } from "@/lib/serverImageProcess"; // konverze obrázků do WebP na serveru
-import { dropSessionDir, getSessionFile } from "@/lib/uploadSession";
+import { processImage, withExt } from "@/lib/serverImageProcess"; // zpracování obrázků (WebP / GIF) na serveru
+import { dropSessionDir, getSessionFile, markSessionSubmitted } from "@/lib/uploadSession";
 
 function remoteFilenameFromPath(webPath: string, uploadSessionKey: string): string | null {
   const prefix = `/api/upload-session/${uploadSessionKey}/foto/`;
@@ -84,9 +84,9 @@ async function processFotoEntries(opts: {
       const file = validFiles[fileIdx++];
       if (!file) continue;
       const buffer = Buffer.from(await file.arrayBuffer());
-      const webp = await imageToWebp(buffer);
-      const filename = toWebpFilename(`${Date.now()}-${file.name}`);
-      await fs.writeFile(path.join(dir, filename), webp);
+      const { buffer: processed, ext } = await processImage(buffer);
+      const filename = withExt(`${Date.now()}-${file.name}`, ext);
+      await fs.writeFile(path.join(dir, filename), processed);
       out.push(`/inzeraty/${id}/${filename}`);
       continue;
     }
@@ -98,16 +98,15 @@ async function processFotoEntries(opts: {
       const sessionFile = getSessionFile(uploadSessionKey, remoteFilename, userId);
       if (!sessionFile) continue;
 
-      const filename = toWebpFilename(remoteFilename);
-      const dest = path.join(dir, filename);
       try {
-        const webp = await imageToWebp(sessionFile.filePath);
-        await fs.writeFile(dest, webp);
+        const { buffer: processed, ext } = await processImage(sessionFile.filePath);
+        const filename = withExt(remoteFilename, ext);
+        await fs.writeFile(path.join(dir, filename), processed);
         await fs.unlink(sessionFile.filePath).catch(() => {});
+        out.push(`/inzeraty/${id}/${filename}`);
       } catch {
-        continue;
+        // konverze selhala — fotku přeskočíme
       }
-      out.push(`/inzeraty/${id}/${filename}`);
     }
   }
 
@@ -204,7 +203,10 @@ export async function vytvorInzerat(formData: FormData) {
   }
 
   // Dočasná session složka s nahranými fotkami už není potřeba — uklidíme disk.
+  // Zároveň session označíme jako odeslanou, aby mobil poznal, že inzerát odešel,
+  // zobrazil upozornění a zakázal další nahrávání.
   if (fields.uploadSessionKey) {
+    markSessionSubmitted(fields.uploadSessionKey, user.id);
     await dropSessionDir(fields.uploadSessionKey);
   }
 
@@ -277,6 +279,7 @@ export async function upravitInzerat(formData: FormData) {
     .where(eq(inzeraty.id, id));
 
   if (fields.uploadSessionKey) {
+    markSessionSubmitted(fields.uploadSessionKey, user.id);
     await dropSessionDir(fields.uploadSessionKey);
   }
 

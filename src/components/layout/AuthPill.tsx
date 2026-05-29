@@ -1,7 +1,7 @@
 "use client";
 
 import { Text } from "@mantine/core";
-import { Bookmark, LogIn, LogOut, Package, ShoppingBag } from "lucide-react";
+import { Bookmark, LogIn, LogOut, MessageSquare, Package, ShoppingBag } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -306,6 +306,14 @@ export function AuthPill() {
                     router.push("/profil/koupene-inzeraty");
                   }}
                 />
+                <MenuItem
+                  icon={<MessageSquare size={15} />}
+                  label="Zprávy"
+                  onClick={() => {
+                    setOpen(false);
+                    router.push("/zpravy");
+                  }}
+                />
                 <DottedDivider />
                 <MenuItem
                   icon={<LogOut size={15} />}
@@ -584,6 +592,16 @@ export function AuthMobileMenu({ onNavigate }: { onNavigate: () => void }) {
         style={mobileItemStyle}
       >
         <ShoppingBag size={16} /> Koupené inzeráty
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          onNavigate();
+          router.push("/zpravy");
+        }}
+        style={mobileItemStyle}
+      >
+        <MessageSquare size={16} /> Zprávy
       </button>
       <button
         type="button"

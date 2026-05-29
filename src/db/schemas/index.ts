@@ -1,3 +1,4 @@
+export * from "./conversations.schema";
 export * from "./inzeraty.schema";
 export * from "./saved-inzeraty.schema";
 export * from "./system-setting.schema";

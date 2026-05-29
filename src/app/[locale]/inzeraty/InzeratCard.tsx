@@ -245,21 +245,34 @@ export function InzeratCard({ id, nazev, foto, kategorie, stav, stavZbozi, cena,
           {stav}
         </span>
 
-        <Title
-          order={3}
-          c={INK}
-          mt={8}
+        {/* Wrapper rezervuje fixní výšku pro 2 řádky názvu. Krátký název se
+            zarovná dolů, takže nad ním zůstane prázdný řádek a všechny karty
+            mají stejnou výšku (cena pak vždy končí ve stejné pozici). */}
+        <div
           style={{
-            fontWeight: 700,
-            lineHeight: 1.2,
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
+            marginTop: 8,
+            minHeight: "3.6rem",
+            display: "flex",
+            alignItems: "flex-end",
           }}
         >
-          {nazev}
-        </Title>
+          <Title
+            order={3}
+            c={INK}
+            style={{
+              fontWeight: 700,
+              lineHeight: 1.2,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              width: "100%",
+              margin: 0,
+            }}
+          >
+            {nazev}
+          </Title>
+        </div>
 
         {/* Cena — marginTop: auto ji drží na spodku karty když je karta roztažená */}
         {free ? (
